@@ -277,6 +277,12 @@ button {
   overflow: hidden;
   border-radius: 28px;
   background: #17211a;
+  touch-action: none;
+  user-select: none;
+}
+
+.drawing-workspace.is-panning {
+  cursor: grabbing;
 }
 
 .canvas-stage {
@@ -301,8 +307,131 @@ button {
     auto;
 }
 
+.osd-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #101712;
+}
+
+.osd-viewer canvas {
+  outline: 0;
+}
+
+.osd-viewer .navigator {
+  bottom: 16px !important;
+  left: 16px !important;
+  border: 1px solid rgb(255 255 255 / 72%) !important;
+  border-radius: 10px;
+  background: rgb(23 33 26 / 76%);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 24%);
+  overflow: hidden;
+}
+
+.calibration-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.calibration-marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  color: #b1461c;
+  filter: drop-shadow(0 1px 2px rgb(255 255 255 / 90%))
+    drop-shadow(0 3px 6px rgb(0 0 0 / 30%));
+  transform: translate(-50%, -50%);
+}
+
+.calibration-marker::before,
+.calibration-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.calibration-marker::before {
+  width: 18px;
+  height: 2px;
+}
+
+.calibration-marker::after {
+  width: 2px;
+  height: 18px;
+}
+
+.calibration-marker.active {
+  color: var(--accent);
+}
+
+.calibration-marker.active::before {
+  height: 3px;
+}
+
+.calibration-marker.active::after {
+  width: 3px;
+}
+
+.calibration-marker-label {
+  position: absolute;
+  left: 13px;
+  top: -11px;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  border: 1px solid rgb(255 255 255 / 85%);
+  border-radius: 999px;
+  padding: 0 4px;
+  background: rgb(23 33 26 / 78%);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.viewer-hud {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgb(23 33 26 / 78%);
+  color: #f8fff9;
+  backdrop-filter: blur(12px);
+}
+
+.viewer-hud div {
+  display: grid;
+  gap: 3px;
+}
+
+.viewer-hud strong {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-hud span {
+  color: rgb(248 255 249 / 72%);
+  font-size: 12px;
+}
+
 .workspace-empty-card {
   position: relative;
+  z-index: 4;
   width: min(560px, calc(100% - 48px));
   border: 1px solid rgb(255 255 255 / 18%);
   border-radius: 30px;
@@ -332,6 +461,101 @@ button {
   max-width: 420px;
   color: var(--muted);
   line-height: 1.7;
+}
+
+.file-input {
+  display: none;
+}
+
+.import-error {
+  color: #9d2b19;
+  font-weight: 700;
+}
+
+.ghost-button.compact {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.calibration-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.calibration-point-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  background: #f6f8f2;
+}
+
+.calibration-point-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(29 111 95 / 12%);
+}
+
+.calibration-point-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.calibration-point-header div {
+  display: grid;
+  gap: 4px;
+}
+
+.calibration-point-header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.coordinate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.coordinate-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.coordinate-grid input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.coordinate-grid input:focus {
+  border-color: var(--accent);
+  outline: 3px solid rgb(29 111 95 / 14%);
+}
+
+.calibration-status {
+  border-radius: 14px;
+  padding: 11px 12px;
+  background: #fff7e8;
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.calibration-status.complete {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .status-bar {

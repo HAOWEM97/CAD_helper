@@ -1,4 +1,4 @@
-import type { CalibrationState, CadPoint } from '@/domain/cad-coordinate/types';
+import type { CalibrationDraft, CalibrationState, CadPoint } from '@/domain/cad-coordinate/types';
 
 export type WorkflowStep = 'calibration' | 'drawing' | 'devices' | 'routing' | 'quantity' | 'export';
 
@@ -68,6 +68,7 @@ export type Project = {
   id: string;
   name: string;
   image: ImageMetadata | null;
+  calibrationDraft: CalibrationDraft;
   calibration: CalibrationState | null;
   topology: TopologyGraph;
   devices: DeviceNode[];

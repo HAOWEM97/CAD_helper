@@ -15,7 +15,7 @@ export function StatusBar() {
   const status = useAppSelector(selectStatusBarState);
   const calibration = useAppSelector(selectCalibration);
   const positionText = status.mouseCadPosition
-    ? `X ${status.mouseCadPosition.x.toFixed(2)} / Y ${status.mouseCadPosition.y.toFixed(2)} mm`
+    ? `X ${status.mouseCadPosition.x.toFixed(2)} / Y ${status.mouseCadPosition.y.toFixed(2)}`
     : 'CAD 坐标未定位';
 
   return (
