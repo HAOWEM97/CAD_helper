@@ -18,6 +18,8 @@ type UiState = {
   topologyToolMode: TopologyToolMode;
   selectedTopologyObject: SelectedTopologyObject;
   activeDrawingNodeId: string | null;
+  leftPanelCollapsed: boolean;
+  rightPanelCollapsed: boolean;
   orthogonalLock: boolean;
   snappingEnabled: boolean;
   zoomPercent: number;
@@ -30,6 +32,8 @@ const initialState: UiState = {
   topologyToolMode: 'draw',
   selectedTopologyObject: null,
   activeDrawingNodeId: null,
+  leftPanelCollapsed: false,
+  rightPanelCollapsed: false,
   orthogonalLock: false,
   snappingEnabled: true,
   zoomPercent: 100,
@@ -67,6 +71,12 @@ const uiSlice = createSlice({
     setActiveDrawingNodeId(state, action: PayloadAction<string | null>) {
       state.activeDrawingNodeId = action.payload;
     },
+    toggleLeftPanelCollapsed(state) {
+      state.leftPanelCollapsed = !state.leftPanelCollapsed;
+    },
+    toggleRightPanelCollapsed(state) {
+      state.rightPanelCollapsed = !state.rightPanelCollapsed;
+    },
     toggleLayer(state, action: PayloadAction<keyof LayerVisibility>) {
       const layer = action.payload;
       state.layerVisibility[layer] = !state.layerVisibility[layer];
@@ -94,7 +104,9 @@ export const {
   setTopologyToolMode,
   setZoomPercent,
   toggleLayer,
+  toggleLeftPanelCollapsed,
   toggleOrthogonalLock,
+  toggleRightPanelCollapsed,
   toggleSnappingEnabled,
 } = uiSlice.actions;
 export default uiSlice.reducer;

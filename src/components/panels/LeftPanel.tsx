@@ -1,8 +1,8 @@
 import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAppSelector } from '@/hooks/useAppSelector';
 import { selectProject, selectTopology } from '@/state/selectors/projectSelectors';
-import { selectLayerVisibility } from '@/state/selectors/uiSelectors';
-import { toggleLayer } from '@/state/slices/uiSlice';
+import { selectLayerVisibility, selectLeftPanelCollapsed } from '@/state/selectors/uiSelectors';
+import { toggleLayer, toggleLeftPanelCollapsed } from '@/state/slices/uiSlice';
 import type { LayerVisibility } from '@/domain/project/types';
 
 const layerLabels: Record<keyof LayerVisibility, string> = {
@@ -18,9 +18,36 @@ export function LeftPanel() {
   const project = useAppSelector(selectProject);
   const topology = useAppSelector(selectTopology);
   const layerVisibility = useAppSelector(selectLayerVisibility);
+  const collapsed = useAppSelector(selectLeftPanelCollapsed);
+
+  if (collapsed) {
+    return (
+      <aside className="side-panel left-panel collapsed" aria-label="工程侧栏已收起">
+        <button
+          aria-label="展开工程侧栏"
+          className="panel-collapse-button"
+          onClick={() => dispatch(toggleLeftPanelCollapsed())}
+          title="展开工程侧栏"
+          type="button"
+        >
+          ›
+        </button>
+        <span className="collapsed-panel-label">工程</span>
+      </aside>
+    );
+  }
 
   return (
     <aside className="side-panel left-panel">
+      <button
+        aria-label="收起工程侧栏"
+        className="panel-collapse-button expanded"
+        onClick={() => dispatch(toggleLeftPanelCollapsed())}
+        title="收起工程侧栏"
+        type="button"
+      >
+        ‹
+      </button>
       <section className="panel-card">
         <div className="panel-heading">
           <h2>BOM 清单</h2>

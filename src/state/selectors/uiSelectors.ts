@@ -5,6 +5,8 @@ export const selectLayerVisibility = (state: RootState) => state.ui.layerVisibil
 export const selectTopologyToolMode = (state: RootState) => state.ui.topologyToolMode;
 export const selectSelectedTopologyObject = (state: RootState) => state.ui.selectedTopologyObject;
 export const selectActiveDrawingNodeId = (state: RootState) => state.ui.activeDrawingNodeId;
+export const selectLeftPanelCollapsed = (state: RootState) => state.ui.leftPanelCollapsed;
+export const selectRightPanelCollapsed = (state: RootState) => state.ui.rightPanelCollapsed;
 export const selectStatusBarState = (state: RootState) => ({
   activeStep: state.ui.activeStep,
   topologyToolMode: state.ui.topologyToolMode,

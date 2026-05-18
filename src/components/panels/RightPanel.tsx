@@ -9,12 +9,17 @@ import {
   selectProjectImage,
   selectTopology,
 } from '@/state/selectors/projectSelectors';
-import { selectActiveStep, selectSelectedTopologyObject } from '@/state/selectors/uiSelectors';
+import {
+  selectActiveStep,
+  selectRightPanelCollapsed,
+  selectSelectedTopologyObject,
+} from '@/state/selectors/uiSelectors';
 import {
   setActiveCalibrationPoint,
   setCalibrationCadCoordinate,
   updateTopologyChannelCategory,
 } from '@/state/slices/projectSlice';
+import { toggleRightPanelCollapsed } from '@/state/slices/uiSlice';
 
 const stepGuidance = {
   calibration: {
@@ -231,15 +236,43 @@ function SelectedTopologySummary() {
 }
 
 export function RightPanel() {
+  const dispatch = useAppDispatch();
   const activeStep = useAppSelector(selectActiveStep);
+  const collapsed = useAppSelector(selectRightPanelCollapsed);
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
   const image = useAppSelector(selectProjectImage);
   const calibrationDraft = useAppSelector(selectCalibrationDraft);
   const calibration = useAppSelector(selectCalibration);
   const guidance = stepGuidance[activeStep];
 
+  if (collapsed) {
+    return (
+      <aside className="side-panel right-panel collapsed" aria-label="属性面板已收起">
+        <button
+          aria-label="展开属性面板"
+          className="panel-collapse-button"
+          onClick={() => dispatch(toggleRightPanelCollapsed())}
+          title="展开属性面板"
+          type="button"
+        >
+          ‹
+        </button>
+        <span className="collapsed-panel-label">属性</span>
+      </aside>
+    );
+  }
+
   return (
     <aside className="side-panel right-panel">
+      <button
+        aria-label="收起属性面板"
+        className="panel-collapse-button expanded"
+        onClick={() => dispatch(toggleRightPanelCollapsed())}
+        title="收起属性面板"
+        type="button"
+      >
+        ›
+      </button>
       <section className="panel-card">
         <div className="panel-heading">
           <h2>属性面板</h2>

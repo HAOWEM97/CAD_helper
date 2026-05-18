@@ -25,7 +25,7 @@
 
 body {
   margin: 0;
-  min-width: 1180px;
+  min-width: 860px;
   min-height: 100vh;
   background:
     radial-gradient(circle at 18% 10%, rgb(244 236 204 / 72%), transparent 32rem),
@@ -180,13 +180,26 @@ button {
 }
 
 .workspace-grid {
+  --left-panel-width: 300px;
+  --right-panel-width: 320px;
+
   display: grid;
-  grid-template-columns: 300px minmax(520px, 1fr) 320px;
+  grid-template-columns: var(--left-panel-width) minmax(0, 1fr) var(--right-panel-width);
   min-height: 0;
   gap: 12px;
+  transition: grid-template-columns 180ms ease;
+}
+
+.workspace-grid.left-collapsed {
+  --left-panel-width: 52px;
+}
+
+.workspace-grid.right-collapsed {
+  --right-panel-width: 52px;
 }
 
 .side-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -195,6 +208,48 @@ button {
   padding: 12px;
   background: rgb(249 250 245 / 78%);
   backdrop-filter: blur(18px);
+}
+
+.left-panel,
+.right-panel {
+  padding-top: 46px;
+}
+
+.left-panel.collapsed,
+.right-panel.collapsed {
+  align-items: center;
+  overflow: hidden;
+  padding: 12px 8px;
+}
+
+.panel-collapse-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 10px 22px rgb(16 72 63 / 22%);
+}
+
+.panel-collapse-button.expanded {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+}
+
+.collapsed-panel-label {
+  writing-mode: vertical-rl;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
 }
 
 .panel-card {
