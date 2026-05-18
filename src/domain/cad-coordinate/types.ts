@@ -24,8 +24,8 @@ export type CalibrationTransform = {
   originImagePoint: Point2D;
   originCadPoint: CadPoint;
   imageYAxis: 'down';
-  a: number;
-  b: number;
+  scaleX: number;
+  scaleY: number;
 };
 
 export type CalibrationState = {
@@ -33,8 +33,8 @@ export type CalibrationState = {
   imagePointB: Point2D;
   cadPointA: CadPoint;
   cadPointB: CadPoint;
-  scale: number;
-  rotationRadians: number;
+  scaleX: number;
+  scaleY: number;
   transform: CalibrationTransform;
   updatedAt: string;
 };

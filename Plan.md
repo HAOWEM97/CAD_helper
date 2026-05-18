@@ -175,8 +175,9 @@ Prj1_CAD_Router/
 - 支持点击两个基准点并输入对应 CAD 绝对坐标。
 - CAD 绝对坐标输入必须支持小数、负数和很小的数值，不得因浏览器数字输入控件限制阻止用户输入有效 CAD 坐标。
 - 参考点必须保存为底图像素坐标，不保存屏幕坐标或当前缩放、平移后的临时坐标。
-- 建立 `pixel -> CAD` 和 `CAD -> pixel` 坐标转换模块，对外提供纯函数能力，内部按两点向量计算缩放、旋转和平移，并显式处理图片像素 Y 轴向下与 CAD 坐标习惯之间的关系。
-- 当前两点校准默认采用统一比例换算；如果实际图纸存在横向和纵向比例不一致，应规划为三点校准或 X/Y 两条基准线校准，分别确定 `scaleX`、`scaleY` 和坐标方向，不应由任意两点强行推断非等比例变换。
+- 建立 `pixel -> CAD` 和 `CAD -> pixel` 坐标转换模块，对外提供纯函数能力，并显式处理图片像素 Y 轴向下与 CAD 坐标习惯之间的关系。
+- 当前项目假设图纸已经具备可靠的 X/Y 方向关系，不在阶段 1 推断旋转、剪切或非线性变换；两点校准分别推导 `scaleX`、`scaleY`，允许横向和纵向像素到 CAD 图纸的转换比不同。
+- 两个参考点必须同时形成有效的像素 X/Y 差值和 CAD X/Y 差值，否则无法推导两个轴向比例，应保持未校准状态并提示用户重新选择参考点。
 - 图纸区左下角应提供小型导航框，显示整张底图缩略图和当前视野位置，帮助用户在放大查看局部时确认所在区域。
 - 底部状态栏实时显示鼠标所在 CAD 坐标。
 
@@ -311,14 +312,14 @@ type CalibrationState = {
   imagePointB: CadPoint;
   cadPointA: CadPoint;
   cadPointB: CadPoint;
-  scale: number;
-  rotationRadians: number;
+  scaleX: number;
+  scaleY: number;
   transform: {
     originImagePoint: CadPoint;
     originCadPoint: CadPoint;
     imageYAxis: 'down';
-    a: number;
-    b: number;
+    scaleX: number;
+    scaleY: number;
   };
 };
 

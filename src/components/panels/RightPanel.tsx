@@ -175,8 +175,8 @@ export function RightPanel() {
 
             <div className={calibration ? 'calibration-status complete' : 'calibration-status'}>
               {calibration
-                ? `校准完成：1 px = ${calibration.scale.toFixed(4)} CAD 单位`
-                : '完成两个参考点落点和 CAD 坐标输入后，将自动生成坐标转换。'}
+                ? `校准完成：X ${calibration.scaleX.toFixed(4)} / Y ${calibration.scaleY.toFixed(4)} CAD/px`
+                : '完成两个参考点落点和 CAD 坐标输入后，将自动生成 X/Y 独立坐标转换；两个参考点需同时形成有效的 X/Y 差值。'}
             </div>
           </div>
         ) : selectedObjectId ? (

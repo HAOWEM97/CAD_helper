@@ -42,6 +42,10 @@ type LeftPressState = {
   y: number;
 } | null;
 
+type ViewerOptions = OpenSeadragon.Options & {
+  drawer?: 'canvas' | 'webgl' | 'html' | Array<'canvas' | 'webgl' | 'html'>;
+};
+
 const stepHints = {
   calibration: '导入 PNG 底图后，左键标记两个 CAD 基准点；右键或中键按住拖拽可随时平移图纸。',
   drawing: '绘制通道拓扑前，先完成底图导入与坐标校准。',
@@ -305,27 +309,34 @@ export function DrawingWorkspace() {
       return undefined;
     }
 
-    const viewer = OpenSeadragon({
+    const viewerOptions: ViewerOptions = {
       element: viewerElementRef.current,
       showNavigator: true,
       navigatorPosition: 'BOTTOM_LEFT',
       navigatorHeight: '124px',
       navigatorWidth: '176px',
       showNavigationControl: false,
-      visibilityRatio: 0.15,
+      drawer: 'canvas',
+      visibilityRatio: 1,
+      constrainDuringPan: true,
       minZoomImageRatio: 0.08,
       maxZoomPixelRatio: 8,
+      immediateRender: true,
+      blendTime: 0,
+      alwaysBlend: false,
       gestureSettingsMouse: {
         clickToZoom: false,
         dblClickToZoom: false,
         dragToPan: false,
         scrollToZoom: true,
       },
-      tileSources: {
-        type: 'image',
+      tileSources: new OpenSeadragon.ImageTileSource({
         url: imageUrl,
-      },
-    });
+        buildPyramid: false,
+      }),
+    };
+
+    const viewer = OpenSeadragon(viewerOptions);
 
     viewerRef.current = viewer;
     const refreshViewState = () => {
