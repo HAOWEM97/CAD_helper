@@ -2,7 +2,12 @@ import type { WorkflowStep } from '@/domain/project/types';
 import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAppSelector } from '@/hooks/useAppSelector';
 import { selectActiveStep } from '@/state/selectors/uiSelectors';
-import { setActiveStep, toggleOrthogonalLock } from '@/state/slices/uiSlice';
+import {
+  setActiveStep,
+  setTopologyToolMode,
+  toggleOrthogonalLock,
+  toggleSnappingEnabled,
+} from '@/state/slices/uiSlice';
 
 const workflowSteps: Array<{ id: WorkflowStep; label: string; description: string }> = [
   { id: 'calibration', label: '校准', description: '底图导入与坐标映射' },
@@ -17,6 +22,8 @@ export function TopToolbar() {
   const dispatch = useAppDispatch();
   const activeStep = useAppSelector(selectActiveStep);
   const orthogonalLock = useAppSelector((state) => state.ui.orthogonalLock);
+  const snappingEnabled = useAppSelector((state) => state.ui.snappingEnabled);
+  const topologyToolMode = useAppSelector((state) => state.ui.topologyToolMode);
 
   return (
     <header className="top-toolbar">
@@ -43,6 +50,33 @@ export function TopToolbar() {
       </nav>
 
       <div className="toolbar-actions">
+        {activeStep === 'drawing' && (
+          <div className="segmented-control" aria-label="拓扑工具模式">
+            <button
+              className={topologyToolMode === 'draw' ? 'segment-button active' : 'segment-button'}
+              onClick={() => dispatch(setTopologyToolMode('draw'))}
+              type="button"
+            >
+              绘制
+            </button>
+            <button
+              className={
+                topologyToolMode === 'select' ? 'segment-button active' : 'segment-button'
+              }
+              onClick={() => dispatch(setTopologyToolMode('select'))}
+              type="button"
+            >
+              选择
+            </button>
+          </div>
+        )}
+        <button
+          className={snappingEnabled ? 'ghost-button active' : 'ghost-button'}
+          onClick={() => dispatch(toggleSnappingEnabled())}
+          type="button"
+        >
+          吸附
+        </button>
         <button
           className={orthogonalLock ? 'ghost-button active' : 'ghost-button'}
           onClick={() => dispatch(toggleOrthogonalLock())}

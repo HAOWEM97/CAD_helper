@@ -1,6 +1,13 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { LayerVisibility, WorkflowStep } from '@/domain/project/types';
 
+export type TopologyToolMode = 'draw' | 'select';
+
+export type SelectedTopologyObject = {
+  type: 'node' | 'channel';
+  id: string;
+} | null;
+
 type MouseCadPosition = {
   x: number;
   y: number;
@@ -8,7 +15,9 @@ type MouseCadPosition = {
 
 type UiState = {
   activeStep: WorkflowStep;
-  selectedObjectId: string | null;
+  topologyToolMode: TopologyToolMode;
+  selectedTopologyObject: SelectedTopologyObject;
+  activeDrawingNodeId: string | null;
   orthogonalLock: boolean;
   snappingEnabled: boolean;
   zoomPercent: number;
@@ -18,7 +27,9 @@ type UiState = {
 
 const initialState: UiState = {
   activeStep: 'calibration',
-  selectedObjectId: null,
+  topologyToolMode: 'draw',
+  selectedTopologyObject: null,
+  activeDrawingNodeId: null,
   orthogonalLock: false,
   snappingEnabled: true,
   zoomPercent: 100,
@@ -38,6 +49,23 @@ const uiSlice = createSlice({
   reducers: {
     setActiveStep(state, action: PayloadAction<WorkflowStep>) {
       state.activeStep = action.payload;
+      state.selectedTopologyObject = null;
+      if (action.payload !== 'drawing') {
+        state.activeDrawingNodeId = null;
+      }
+    },
+    setTopologyToolMode(state, action: PayloadAction<TopologyToolMode>) {
+      state.topologyToolMode = action.payload;
+      state.selectedTopologyObject = null;
+      if (action.payload === 'select') {
+        state.activeDrawingNodeId = null;
+      }
+    },
+    setSelectedTopologyObject(state, action: PayloadAction<SelectedTopologyObject>) {
+      state.selectedTopologyObject = action.payload;
+    },
+    setActiveDrawingNodeId(state, action: PayloadAction<string | null>) {
+      state.activeDrawingNodeId = action.payload;
     },
     toggleLayer(state, action: PayloadAction<keyof LayerVisibility>) {
       const layer = action.payload;
@@ -45,6 +73,9 @@ const uiSlice = createSlice({
     },
     toggleOrthogonalLock(state) {
       state.orthogonalLock = !state.orthogonalLock;
+    },
+    toggleSnappingEnabled(state) {
+      state.snappingEnabled = !state.snappingEnabled;
     },
     setMouseCadPosition(state, action: PayloadAction<MouseCadPosition>) {
       state.mouseCadPosition = action.payload;
@@ -57,9 +88,13 @@ const uiSlice = createSlice({
 
 export const {
   setActiveStep,
+  setActiveDrawingNodeId,
   setMouseCadPosition,
+  setSelectedTopologyObject,
+  setTopologyToolMode,
   setZoomPercent,
   toggleLayer,
   toggleOrthogonalLock,
+  toggleSnappingEnabled,
 } = uiSlice.actions;
 export default uiSlice.reducer;

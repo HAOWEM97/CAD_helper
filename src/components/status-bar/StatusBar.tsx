@@ -11,6 +11,11 @@ const stepLabels = {
   export: '导出',
 };
 
+const topologyToolLabels = {
+  draw: '绘制',
+  select: '选择',
+};
+
 export function StatusBar() {
   const status = useAppSelector(selectStatusBarState);
   const calibration = useAppSelector(selectCalibration);
@@ -21,6 +26,7 @@ export function StatusBar() {
   return (
     <footer className="status-bar">
       <span>当前阶段：{stepLabels[status.activeStep]}</span>
+      {status.activeStep === 'drawing' && <span>工具：{topologyToolLabels[status.topologyToolMode]}</span>}
       <span>坐标：{positionText}</span>
       <span>缩放：{status.zoomPercent}%</span>
       <span>正交：{status.orthogonalLock ? '开启' : '关闭'}</span>

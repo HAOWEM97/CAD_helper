@@ -6,7 +6,13 @@ import type {
   CalibrationState,
 } from '@/domain/cad-coordinate/types';
 import type { Point2D } from '@/domain/geometry/types';
-import type { ImageMetadata, Project } from '@/domain/project/types';
+import type {
+  ChannelCategory,
+  ChannelSegment,
+  ImageMetadata,
+  Project,
+  TopologyNode,
+} from '@/domain/project/types';
 
 type ProjectState = {
   current: Project;
@@ -82,6 +88,29 @@ function refreshCalibrationFromDraft(project: Project) {
   }
 }
 
+function markRoutesUsingChannelsForRecalculation(project: Project, channelIds: Set<string>) {
+  if (channelIds.size === 0) {
+    return;
+  }
+
+  project.routes = project.routes.map((route) =>
+    route.pathSegmentIds.some((segmentId) => channelIds.has(segmentId))
+      ? { ...route, status: 'needs-recalculation' }
+      : route,
+  );
+}
+
+function channelConnectsSameNodes(
+  channel: ChannelSegment,
+  startNodeId: string,
+  endNodeId: string,
+) {
+  return (
+    (channel.startNodeId === startNodeId && channel.endNodeId === endNodeId) ||
+    (channel.startNodeId === endNodeId && channel.endNodeId === startNodeId)
+  );
+}
+
 const projectSlice = createSlice({
   name: 'project',
   initialState,
@@ -125,15 +154,121 @@ const projectSlice = createSlice({
         status: 'needs-recalculation',
       }));
     },
+    addTopologyNode(state, action: PayloadAction<TopologyNode>) {
+      if (state.current.topology.nodes.some((node) => node.id === action.payload.id)) {
+        return;
+      }
+
+      state.current.topology.nodes.push(action.payload);
+    },
+    addTopologyChannel(
+      state,
+      action: PayloadAction<{
+        id: string;
+        startNodeId: string;
+        endNodeId: string;
+        category?: ChannelCategory;
+      }>,
+    ) {
+      const { id, startNodeId, endNodeId, category = 'tray' } = action.payload;
+      if (startNodeId === endNodeId) {
+        return;
+      }
+
+      const nodeIds = new Set(state.current.topology.nodes.map((node) => node.id));
+      if (!nodeIds.has(startNodeId) || !nodeIds.has(endNodeId)) {
+        return;
+      }
+
+      const duplicate = state.current.topology.channels.some((channel) =>
+        channelConnectsSameNodes(channel, startNodeId, endNodeId),
+      );
+
+      if (duplicate) {
+        return;
+      }
+
+      state.current.topology.channels.push({
+        id,
+        startNodeId,
+        endNodeId,
+        category,
+        cableIds: [],
+      });
+    },
+    moveTopologyNode(
+      state,
+      action: PayloadAction<{ nodeId: string; position: TopologyNode['position'] }>,
+    ) {
+      const node = state.current.topology.nodes.find((item) => item.id === action.payload.nodeId);
+      if (!node) {
+        return;
+      }
+
+      node.position = action.payload.position;
+      const connectedChannelIds = new Set(
+        state.current.topology.channels
+          .filter(
+            (channel) =>
+              channel.startNodeId === action.payload.nodeId ||
+              channel.endNodeId === action.payload.nodeId,
+          )
+          .map((channel) => channel.id),
+      );
+      markRoutesUsingChannelsForRecalculation(state.current, connectedChannelIds);
+    },
+    deleteTopologyNode(state, action: PayloadAction<string>) {
+      const nodeId = action.payload;
+      const connectedChannelIds = new Set(
+        state.current.topology.channels
+          .filter((channel) => channel.startNodeId === nodeId || channel.endNodeId === nodeId)
+          .map((channel) => channel.id),
+      );
+
+      state.current.topology.nodes = state.current.topology.nodes.filter(
+        (node) => node.id !== nodeId,
+      );
+      state.current.topology.channels = state.current.topology.channels.filter(
+        (channel) => channel.startNodeId !== nodeId && channel.endNodeId !== nodeId,
+      );
+      markRoutesUsingChannelsForRecalculation(state.current, connectedChannelIds);
+    },
+    deleteTopologyChannel(state, action: PayloadAction<string>) {
+      const channelId = action.payload;
+      state.current.topology.channels = state.current.topology.channels.filter(
+        (channel) => channel.id !== channelId,
+      );
+      markRoutesUsingChannelsForRecalculation(state.current, new Set([channelId]));
+    },
+    updateTopologyChannelCategory(
+      state,
+      action: PayloadAction<{ channelId: string; category: ChannelCategory }>,
+    ) {
+      const channel = state.current.topology.channels.find(
+        (item) => item.id === action.payload.channelId,
+      );
+      if (!channel) {
+        return;
+      }
+
+      channel.category = action.payload.category;
+      markRoutesUsingChannelsForRecalculation(state.current, new Set([channel.id]));
+    },
   },
 });
 
 export const {
+  addTopologyChannel,
+  addTopologyNode,
+  deleteTopologyChannel,
+  deleteTopologyNode,
+  moveTopologyNode,
   renameProject,
   setActiveCalibrationPoint,
   setCalibration,
   setCalibrationCadCoordinate,
   setCalibrationImagePoint,
   setImageMetadata,
+  updateTopologyChannelCategory,
 } = projectSlice.actions;
 export default projectSlice.reducer;

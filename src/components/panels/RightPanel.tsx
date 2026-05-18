@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
+import type { ChannelCategory } from '@/domain/project/types';
 import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAppSelector } from '@/hooks/useAppSelector';
 import {
   selectCalibration,
   selectCalibrationDraft,
   selectProjectImage,
+  selectTopology,
 } from '@/state/selectors/projectSelectors';
-import { selectActiveStep } from '@/state/selectors/uiSelectors';
+import { selectActiveStep, selectSelectedTopologyObject } from '@/state/selectors/uiSelectors';
 import {
   setActiveCalibrationPoint,
   setCalibrationCadCoordinate,
+  updateTopologyChannelCategory,
 } from '@/state/slices/projectSlice';
 
 const stepGuidance = {
@@ -137,9 +140,99 @@ function CalibrationPointEditor({ activePoint, point, slot }: CalibrationPointEd
   );
 }
 
+const channelCategoryLabels: Record<ChannelCategory, string> = {
+  tray: '线槽',
+  duct: '排管',
+};
+
+function ChannelEditor() {
+  const dispatch = useAppDispatch();
+  const selectedObject = useAppSelector(selectSelectedTopologyObject);
+  const topology = useAppSelector(selectTopology);
+  const channel =
+    selectedObject?.type === 'channel'
+      ? topology.channels.find((item) => item.id === selectedObject.id)
+      : null;
+
+  if (!channel) {
+    return (
+      <div className="empty-state">
+        <strong>未选择通道</strong>
+        <p>切换到选择模式后，点击通道可编辑通道类型。</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="property-form">
+      <label>
+        <span>通道类型</span>
+        <select
+          onChange={(event) =>
+            dispatch(
+              updateTopologyChannelCategory({
+                channelId: channel.id,
+                category: event.target.value as ChannelCategory,
+              }),
+            )
+          }
+          value={channel.category}
+        >
+          {Object.entries(channelCategoryLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        <span>规格</span>
+        <input disabled placeholder="规格推演阶段解锁" value={channel.recommendedSpec?.label ?? ''} />
+      </label>
+
+      <label>
+        <span>敷设深度</span>
+        <input
+          disabled
+          placeholder="规格推演后可编辑"
+          value={channel.depthMm === undefined ? '' : String(channel.depthMm)}
+        />
+      </label>
+
+      <div className="locked-note">规格与敷设深度在阶段 4 规格推演前保持锁定。</div>
+    </div>
+  );
+}
+
+function SelectedTopologySummary() {
+  const selectedObject = useAppSelector(selectSelectedTopologyObject);
+  const topology = useAppSelector(selectTopology);
+
+  if (selectedObject?.type === 'channel') {
+    return <ChannelEditor />;
+  }
+
+  if (selectedObject?.type === 'node') {
+    const node = topology.nodes.find((item) => item.id === selectedObject.id);
+
+    return node ? (
+      <div className="empty-state">
+        <strong>已选择节点</strong>
+        <p>
+          CAD X {node.position.x.toFixed(2)} / Y {node.position.y.toFixed(2)}。拖动节点可调整位置，
+          Delete 会删除该节点及其连接通道。
+        </p>
+      </div>
+    ) : null;
+  }
+
+  return null;
+}
+
 export function RightPanel() {
   const activeStep = useAppSelector(selectActiveStep);
-  const selectedObjectId = useAppSelector((state) => state.ui.selectedObjectId);
+  const selectedObject = useAppSelector(selectSelectedTopologyObject);
   const image = useAppSelector(selectProjectImage);
   const calibrationDraft = useAppSelector(selectCalibrationDraft);
   const calibration = useAppSelector(selectCalibration);
@@ -179,11 +272,8 @@ export function RightPanel() {
                 : '完成两个参考点落点和 CAD 坐标输入后，将自动生成 X/Y 独立坐标转换；两个参考点需同时形成有效的 X/Y 差值。'}
             </div>
           </div>
-        ) : selectedObjectId ? (
-          <div className="empty-state">
-            <strong>已选择对象</strong>
-            <p>对象属性编辑将在对应阶段实现后显示。</p>
-          </div>
+        ) : activeStep === 'drawing' && selectedObject ? (
+          <SelectedTopologySummary />
         ) : (
           <div className="empty-state">
             <strong>未选择对象</strong>

@@ -144,6 +144,29 @@ button {
   gap: 8px;
 }
 
+.segmented-control {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(54px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #edf2ec;
+}
+
+.segment-button {
+  border: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+.segment-button.active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .ghost-button {
   background: #edf2ec;
   color: var(--accent-strong);
@@ -335,6 +358,64 @@ button {
   pointer-events: none;
 }
 
+.topology-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.topology-channel {
+  stroke: #1d6f5f;
+  stroke-linecap: round;
+  stroke-width: 4;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 28%));
+}
+
+.topology-channel-duct {
+  stroke: #7c4d18;
+  stroke-dasharray: 12 7;
+}
+
+.topology-channel.selected {
+  stroke: #e26d2d;
+  stroke-width: 7;
+}
+
+.topology-preview {
+  stroke: #f3d168;
+  stroke-dasharray: 10 8;
+  stroke-linecap: round;
+  stroke-width: 3;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 36%));
+}
+
+.topology-preview.axis-snapped {
+  stroke: #ffffff;
+}
+
+.topology-node circle {
+  fill: #f8fff9;
+  stroke: #10483f;
+  stroke-width: 3;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 34%));
+}
+
+.topology-node.selected circle,
+.topology-node.snapped circle {
+  fill: #ffd986;
+  stroke: #b1461c;
+  stroke-width: 4;
+}
+
+.topology-node.active-start circle {
+  fill: #1d6f5f;
+  stroke: #ffffff;
+}
+
 .calibration-marker {
   position: absolute;
   width: 18px;
@@ -440,6 +521,30 @@ button {
   text-align: center;
 }
 
+.workspace-blocking-card {
+  position: absolute;
+  z-index: 4;
+  width: min(460px, calc(100% - 48px));
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 24px;
+  padding: 26px;
+  background: rgb(249 250 245 / 94%);
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.workspace-blocking-card h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.workspace-blocking-card p {
+  margin: 10px auto 0;
+  max-width: 340px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .stage-label {
   display: inline-flex;
   margin-bottom: 14px;
@@ -541,6 +646,46 @@ button {
 .coordinate-grid input:focus {
   border-color: var(--accent);
   outline: 3px solid rgb(29 111 95 / 14%);
+}
+
+.property-form {
+  display: grid;
+  gap: 12px;
+}
+
+.property-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.property-form input,
+.property-form select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.property-form input:disabled {
+  background: #edf2ec;
+  color: #8a958d;
+  cursor: not-allowed;
+}
+
+.locked-note {
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fff7e8;
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 .calibration-status {
