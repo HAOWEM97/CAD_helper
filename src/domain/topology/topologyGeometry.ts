@@ -1,5 +1,5 @@
 import type { Point2D } from '@/domain/geometry/types';
-import type { ChannelSegment, TopologyNode } from '@/domain/project/types';
+import type { ChannelSegment, TopologyGraph, TopologyNode } from '@/domain/project/types';
 
 export type NodeSnapResult = {
   node: TopologyNode;
@@ -84,6 +84,54 @@ export function channelExistsBetween(
       (channel.startNodeId === startNodeId && channel.endNodeId === endNodeId) ||
       (channel.startNodeId === endNodeId && channel.endNodeId === startNodeId),
   );
+}
+
+export function findConnectedChannelIds(topology: TopologyGraph, seedChannelId: string) {
+  const seedChannel = topology.channels.find((channel) => channel.id === seedChannelId);
+  if (!seedChannel) {
+    return [];
+  }
+
+  const channelIdsByNodeId = new Map<string, string[]>();
+  for (const channel of topology.channels) {
+    channelIdsByNodeId.set(channel.startNodeId, [
+      ...(channelIdsByNodeId.get(channel.startNodeId) ?? []),
+      channel.id,
+    ]);
+    channelIdsByNodeId.set(channel.endNodeId, [
+      ...(channelIdsByNodeId.get(channel.endNodeId) ?? []),
+      channel.id,
+    ]);
+  }
+
+  const channelById = new Map(topology.channels.map((channel) => [channel.id, channel]));
+  const visitedChannelIds = new Set<string>();
+  const pendingChannelIds = [seedChannel.id];
+
+  while (pendingChannelIds.length > 0) {
+    const channelId = pendingChannelIds.shift();
+    if (!channelId || visitedChannelIds.has(channelId)) {
+      continue;
+    }
+
+    const channel = channelById.get(channelId);
+    if (!channel) {
+      continue;
+    }
+
+    visitedChannelIds.add(channelId);
+    for (const nodeId of [channel.startNodeId, channel.endNodeId]) {
+      for (const adjacentChannelId of channelIdsByNodeId.get(nodeId) ?? []) {
+        if (!visitedChannelIds.has(adjacentChannelId)) {
+          pendingChannelIds.push(adjacentChannelId);
+        }
+      }
+    }
+  }
+
+  return topology.channels
+    .filter((channel) => visitedChannelIds.has(channel.id))
+    .map((channel) => channel.id);
 }
 
 export function getPointToSegmentDistance(point: Point2D, start: Point2D, end: Point2D) {

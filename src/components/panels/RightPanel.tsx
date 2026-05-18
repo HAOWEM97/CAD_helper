@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
 import type { ChannelCategory } from '@/domain/project/types';
+import { findConnectedChannelIds } from '@/domain/topology/topologyGeometry';
 import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAppSelector } from '@/hooks/useAppSelector';
 import {
@@ -150,10 +151,13 @@ const channelCategoryLabels: Record<ChannelCategory, string> = {
   duct: '排管',
 };
 
+type ChannelApplyScope = 'single' | 'connected';
+
 function ChannelEditor() {
   const dispatch = useAppDispatch();
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
   const topology = useAppSelector(selectTopology);
+  const [applyScope, setApplyScope] = useState<ChannelApplyScope>('single');
   const channel =
     selectedObject?.type === 'channel'
       ? topology.channels.find((item) => item.id === selectedObject.id)
@@ -168,15 +172,30 @@ function ChannelEditor() {
     );
   }
 
+  const connectedChannelIds = findConnectedChannelIds(topology, channel.id);
+  const targetChannelIds = applyScope === 'connected' ? connectedChannelIds : [channel.id];
+  const affectedCount = targetChannelIds.length;
+
   return (
     <div className="property-form">
+      <label>
+        <span>应用范围</span>
+        <select
+          onChange={(event) => setApplyScope(event.target.value as ChannelApplyScope)}
+          value={applyScope}
+        >
+          <option value="single">当前通道</option>
+          <option value="connected">连通通道组</option>
+        </select>
+      </label>
+
       <label>
         <span>通道类型</span>
         <select
           onChange={(event) =>
             dispatch(
               updateTopologyChannelCategory({
-                channelId: channel.id,
+                channelIds: targetChannelIds,
                 category: event.target.value as ChannelCategory,
               }),
             )
@@ -190,6 +209,12 @@ function ChannelEditor() {
           ))}
         </select>
       </label>
+
+      <div className="scope-note">
+        {applyScope === 'connected'
+          ? `将影响 ${affectedCount} 条连通通道。`
+          : '只修改当前选中的这一段通道。'}
+      </div>
 
       <label>
         <span>规格</span>

@@ -743,6 +743,16 @@ button {
   line-height: 1.5;
 }
 
+.scope-note {
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .calibration-status {
   border-radius: 14px;
   padding: 11px 12px;

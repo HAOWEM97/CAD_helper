@@ -242,17 +242,34 @@ const projectSlice = createSlice({
     },
     updateTopologyChannelCategory(
       state,
-      action: PayloadAction<{ channelId: string; category: ChannelCategory }>,
+      action: PayloadAction<{
+        channelId?: string;
+        channelIds?: string[];
+        category: ChannelCategory;
+      }>,
     ) {
-      const channel = state.current.topology.channels.find(
-        (item) => item.id === action.payload.channelId,
+      const targetChannelIds = new Set(
+        [
+          ...(action.payload.channelId ? [action.payload.channelId] : []),
+          ...(action.payload.channelIds ?? []),
+        ].filter(Boolean),
       );
-      if (!channel) {
+
+      if (targetChannelIds.size === 0) {
         return;
       }
 
-      channel.category = action.payload.category;
-      markRoutesUsingChannelsForRecalculation(state.current, new Set([channel.id]));
+      const updatedChannelIds = new Set<string>();
+      for (const channel of state.current.topology.channels) {
+        if (!targetChannelIds.has(channel.id)) {
+          continue;
+        }
+
+        channel.category = action.payload.category;
+        updatedChannelIds.add(channel.id);
+      }
+
+      markRoutesUsingChannelsForRecalculation(state.current, updatedChannelIds);
     },
   },
 });

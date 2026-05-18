@@ -3,10 +3,11 @@ import {
   applyAxisSnap,
   applyOrthogonalConstraint,
   channelExistsBetween,
+  findConnectedChannelIds,
   findNearestNode,
   getPointToSegmentDistance,
 } from '@/domain/topology/topologyGeometry';
-import type { ChannelSegment, TopologyNode } from '@/domain/project/types';
+import type { ChannelSegment, TopologyGraph, TopologyNode } from '@/domain/project/types';
 
 const nodes: TopologyNode[] = [
   { id: 'node-a', position: { x: 0, y: 0 } },
@@ -56,6 +57,59 @@ describe('topology geometry helpers', () => {
     expect(channelExistsBetween(channels, 'node-a', 'node-b')).toBe(true);
     expect(channelExistsBetween(channels, 'node-b', 'node-a')).toBe(true);
     expect(channelExistsBetween(channels, 'node-a', 'node-c')).toBe(false);
+  });
+
+  it('finds channels directly and indirectly connected by shared nodes', () => {
+    const topology: TopologyGraph = {
+      nodes: [
+        { id: 'node-a', position: { x: 0, y: 0 } },
+        { id: 'node-b', position: { x: 10, y: 0 } },
+        { id: 'node-c', position: { x: 20, y: 0 } },
+        { id: 'node-d', position: { x: 30, y: 0 } },
+        { id: 'node-e', position: { x: 10, y: 10 } },
+        { id: 'node-f', position: { x: 20, y: 10 } },
+      ],
+      channels: [
+        {
+          id: 'channel-a',
+          startNodeId: 'node-a',
+          endNodeId: 'node-b',
+          category: 'tray',
+          cableIds: [],
+        },
+        {
+          id: 'channel-b',
+          startNodeId: 'node-b',
+          endNodeId: 'node-c',
+          category: 'tray',
+          cableIds: [],
+        },
+        {
+          id: 'channel-c',
+          startNodeId: 'node-c',
+          endNodeId: 'node-d',
+          category: 'tray',
+          cableIds: [],
+        },
+        {
+          id: 'channel-crossing-only',
+          startNodeId: 'node-e',
+          endNodeId: 'node-f',
+          category: 'duct',
+          cableIds: [],
+        },
+      ],
+    };
+
+    expect(findConnectedChannelIds(topology, 'channel-a')).toEqual([
+      'channel-a',
+      'channel-b',
+      'channel-c',
+    ]);
+    expect(findConnectedChannelIds(topology, 'channel-crossing-only')).toEqual([
+      'channel-crossing-only',
+    ]);
+    expect(findConnectedChannelIds(topology, 'missing-channel')).toEqual([]);
   });
 
   it('measures point-to-channel hit distance', () => {
