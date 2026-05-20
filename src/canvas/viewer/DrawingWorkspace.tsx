@@ -43,6 +43,7 @@ import {
   setSelectedTopologyObject,
   setZoomPercent,
 } from '@/state/slices/uiSlice';
+import { loadDraftImageBlob, saveDraftImageBlob } from '@/services/draft/draftPersistence';
 import type { ChannelSegment, TopologyGraph, TopologyNode } from '@/domain/project/types';
 
 type MarkerPosition = {
@@ -152,6 +153,7 @@ export function DrawingWorkspace() {
   const calibrationRef = useRef<CalibrationState | null>(calibration);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [restoringImage, setRestoringImage] = useState(false);
   const [markerPositions, setMarkerPositions] = useState<MarkerPosition[]>([]);
   const [topologyNodePositions, setTopologyNodePositions] = useState<OverlayNodePosition[]>([]);
   const [topologyChannelPositions, setTopologyChannelPositions] = useState<
@@ -467,14 +469,25 @@ export function DrawingWorkspace() {
       imageUrlRef.current = nextUrl;
       setImageUrl(nextUrl);
       setImportError(null);
-      dispatch(
-        setImageMetadata({
-          id: createImageId(),
-          name: file.name,
-          width: probe.naturalWidth,
-          height: probe.naturalHeight,
-        }),
-      );
+      const sameImage =
+        image?.name === file.name &&
+        image.width === probe.naturalWidth &&
+        image.height === probe.naturalHeight;
+
+      if (!sameImage) {
+        dispatch(
+          setImageMetadata({
+            id: createImageId(),
+            name: file.name,
+            width: probe.naturalWidth,
+            height: probe.naturalHeight,
+          }),
+        );
+      }
+
+      void saveDraftImageBlob(file).catch(() => {
+        setImportError('底图已导入，但浏览器暂存失败；刷新后可能需要重新选择底图。');
+      });
       dispatch(setMouseCadPosition(null));
     };
 
@@ -774,6 +787,41 @@ export function DrawingWorkspace() {
   }, [activeStep, dispatch, selectedTopologyObject]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (!image || imageUrl || imageUrlRef.current) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setRestoringImage(true);
+    void loadDraftImageBlob()
+      .then((blob) => {
+        if (cancelled || !blob) {
+          return;
+        }
+
+        const nextUrl = URL.createObjectURL(blob);
+        if (imageUrlRef.current) {
+          URL.revokeObjectURL(imageUrlRef.current);
+        }
+
+        imageUrlRef.current = nextUrl;
+        setImageUrl(nextUrl);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRestoringImage(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [image, imageUrl]);
+
+  useEffect(() => {
     if (!imageUrl || !viewerElementRef.current) {
       return undefined;
     }
@@ -937,10 +985,21 @@ export function DrawingWorkspace() {
         {!imageUrl && (
           <div className="workspace-empty-card">
             <span className="stage-label">图纸交互区</span>
-            <h2>{image ? image.name : '尚未导入 PNG 底图'}</h2>
-            <p>{stepHints[activeStep]}</p>
+            <h2>
+              {restoringImage
+                ? '正在恢复暂存底图'
+                : image
+                  ? `${image.name}（需要重新选择底图）`
+                  : '尚未导入 PNG 底图'}
+            </h2>
+            <p>
+              {restoringImage
+                ? '正在从浏览器本地暂存中恢复 PNG 底图和工程草稿。'
+                : stepHints[activeStep]}
+            </p>
             <button
               className="primary-button"
+              disabled={restoringImage}
               onClick={() => fileInputRef.current?.click()}
               type="button"
             >

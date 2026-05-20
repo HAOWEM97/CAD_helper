@@ -13,7 +13,7 @@ type MouseCadPosition = {
   y: number;
 } | null;
 
-type UiState = {
+export type UiState = {
   activeStep: WorkflowStep;
   topologyToolMode: TopologyToolMode;
   selectedTopologyObject: SelectedTopologyObject;
@@ -27,7 +27,7 @@ type UiState = {
   layerVisibility: LayerVisibility;
 };
 
-const initialState: UiState = {
+export const createInitialUiState = (): UiState => ({
   activeStep: 'calibration',
   topologyToolMode: 'draw',
   selectedTopologyObject: null,
@@ -45,7 +45,9 @@ const initialState: UiState = {
     channelOutlines: true,
     annotations: true,
   },
-};
+});
+
+const initialState: UiState = createInitialUiState();
 
 const uiSlice = createSlice({
   name: 'ui',
