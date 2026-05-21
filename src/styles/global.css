@@ -179,6 +179,22 @@ button {
   font-weight: 800;
 }
 
+.danger-button {
+  border: 0;
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 0 14px;
+  background: #8f2f2f;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.primary-button:disabled {
+  transform: none;
+  background: #9aa69d;
+  cursor: not-allowed;
+}
+
 .workspace-grid {
   --left-panel-width: 300px;
   --right-panel-width: 320px;
@@ -440,6 +456,15 @@ button {
   stroke-width: 7;
 }
 
+.topology-channel.route-highlight {
+  stroke: #d34b83;
+  stroke-width: 8;
+}
+
+.topology-channel.route-highlight.topology-channel-duct {
+  stroke-dasharray: 14 6;
+}
+
 .topology-preview {
   stroke: #f3d168;
   stroke-dasharray: 10 8;
@@ -469,6 +494,12 @@ button {
 .topology-node.active-start circle {
   fill: #1d6f5f;
   stroke: #ffffff;
+}
+
+.topology-node.connection-point circle {
+  fill: #d34b83;
+  stroke: #ffffff;
+  stroke-width: 4;
 }
 
 .calibration-marker {
@@ -717,7 +748,8 @@ button {
 }
 
 .property-form input,
-.property-form select {
+.property-form select,
+.property-form textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -725,11 +757,117 @@ button {
   padding: 9px 10px;
   background: #ffffff;
   color: var(--ink);
+  resize: vertical;
 }
 
-.property-form input:disabled {
+.property-form input:disabled,
+.property-form textarea:disabled {
   background: #edf2ec;
   color: #8a958d;
+  cursor: not-allowed;
+}
+
+.inline-check {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  color: var(--ink) !important;
+}
+
+.inline-check input {
+  width: auto;
+}
+
+.routing-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.device-panel,
+.cable-editor,
+.connection-table {
+  display: grid;
+  gap: 12px;
+}
+
+.compact-heading h2 {
+  font-size: 14px;
+}
+
+.cable-row {
+  display: grid;
+  grid-template-columns: minmax(58px, 1fr) minmax(88px, 1.4fr) 54px 54px auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.cable-row input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.connection-row {
+  display: grid;
+  grid-template-columns: 0.9fr 0.8fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.connection-row small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.connection-row em {
+  justify-self: end;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.route-list {
+  display: grid;
+  gap: 8px;
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.route-row strong {
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+
+.route-row.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.route-row:disabled {
+  opacity: 0.72;
   cursor: not-allowed;
 }
 

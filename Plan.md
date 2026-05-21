@@ -11,7 +11,7 @@
 - 支持用户导入超大尺寸 `PNG` 图纸，并进行流畅缩放、拖拽和局部查看。
 - 支持通过两个基准点完成屏幕像素坐标到 CAD 真实坐标的映射。
 - 支持用户在底图上绘制通道拓扑网络，并区分线槽、排管等通道类型。
-- 支持将节点配置为设备节点，并录入设备接线高度。
+- 支持将节点配置为设备接线孔，并录入设备名称、接线孔类型、安装高度和线缆组合。
 - 支持基于拓扑网络生成线缆最短路径。
 - 支持根据线缆路径、设备高度、通道深度动态统计线缆长度和材料清单。
 - 支持生成可供 AutoCAD/ZWCAD 使用的 `.bas` 或 `.scr` 文本脚本。
@@ -245,13 +245,15 @@ Prj1_CAD_Router/
 - 未进入规格推演前，规格和深度输入不可编辑。
 - 删除节点或通道时，关联拓扑结构保持一致。
 
-### 阶段 3：设备节点与路由规划
+### 阶段 3：设备接线孔与路由规划
+
+当前状态：已完成调整版实现。支持拓扑节点设置为设备接线孔、默认线缆库和设备类型库、自定义线缆/线缆组合/设备类型常用库、接线孔路由代办、线缆兼容性校验、按 CAD 平面二维长度计算最短路径、路由结果写入通道并在画布中高亮显示。
 
 开发内容：
 
-- 支持将拓扑节点标记为设备。
-- 支持录入设备名称、类型和接线点高度。
-- 支持创建单根线缆和线缆组合模板。
+- 支持将拓扑节点标记为设备接线孔。
+- 支持录入设备实例、接线孔类型、安装高度和线缆组合。
+- 支持自定义线缆规格、线缆组合和设备类型模板，并加入常用库。
 - 实现基于拓扑图的最短路径计算。
 - 将路由结果写入经过的通道。
 - 在图纸区高亮显示生成路径。
@@ -260,7 +262,7 @@ Prj1_CAD_Router/
 
 - 节点可被成功标记为设备。
 - 设备高度修改后状态正常保存。
-- 用户选择起点、终点和线缆模板后可以生成路由。
+- 用户从接线孔待办中选择起点和兼容终点后可以生成路由。
 - 简单网络中，算法返回预期最短路径。
 - 网络断开时，系统不生成错误路由，并明确提示无法到达。
 - 修改已参与路由的通道后，相关路由被标记为需要重新计算。
@@ -360,10 +362,12 @@ type Project = {
   image: ImageMetadata | null;
   calibration: CalibrationState | null;
   topology: TopologyGraph;
-  devices: DeviceNode[];
-  cableTemplates: CableTemplate[];
+  deviceInstances: DeviceInstance[];
+  connectionPoints: DeviceConnectionPoint[];
+  cableSpecs: CableSpec[];
+  cableBundlePresets: CableBundlePreset[];
+  deviceTypePresets: DeviceTypePreset[];
   routes: CableRoute[];
-  channels: ChannelSegment[];
 };
 
 type ChannelSegment = {
@@ -378,9 +382,8 @@ type ChannelSegment = {
 
 type CableRoute = {
   id: string;
-  fromDeviceId: string;
-  toDeviceId: string;
-  cableIds: string[];
+  fromConnectionPointId: string;
+  toConnectionPointId: string;
   pathSegmentIds: string[];
 };
 ```
@@ -394,8 +397,8 @@ type CableRoute = {
 3. 完成两点 CAD 坐标校准。
 4. 在图纸上绘制通道拓扑。
 5. 设置通道类型。
-6. 标记设备节点并录入高度。
-7. 创建线缆或线缆组合。
+6. 标记设备接线孔并录入高度。
+7. 配置线缆规格或线缆组合。
 8. 生成线缆路由。
 9. 自动推演通道规格。
 10. 输入通道敷设深度。

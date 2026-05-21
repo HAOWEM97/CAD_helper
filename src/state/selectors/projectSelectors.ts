@@ -5,3 +5,11 @@ export const selectProjectImage = (state: RootState) => state.project.current.im
 export const selectCalibrationDraft = (state: RootState) => state.project.current.calibrationDraft;
 export const selectCalibration = (state: RootState) => state.project.current.calibration;
 export const selectTopology = (state: RootState) => state.project.current.topology;
+export const selectDeviceInstances = (state: RootState) => state.project.current.deviceInstances;
+export const selectConnectionPoints = (state: RootState) => state.project.current.connectionPoints;
+export const selectCableSpecs = (state: RootState) => state.project.current.cableSpecs;
+export const selectCableBundlePresets = (state: RootState) =>
+  state.project.current.cableBundlePresets;
+export const selectDeviceTypePresets = (state: RootState) =>
+  state.project.current.deviceTypePresets;
+export const selectRoutes = (state: RootState) => state.project.current.routes;

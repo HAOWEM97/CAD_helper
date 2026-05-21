@@ -17,6 +17,7 @@ export type UiState = {
   activeStep: WorkflowStep;
   topologyToolMode: TopologyToolMode;
   selectedTopologyObject: SelectedTopologyObject;
+  selectedRouteId: string | null;
   activeDrawingNodeId: string | null;
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
@@ -31,6 +32,7 @@ export const createInitialUiState = (): UiState => ({
   activeStep: 'calibration',
   topologyToolMode: 'draw',
   selectedTopologyObject: null,
+  selectedRouteId: null,
   activeDrawingNodeId: null,
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
@@ -59,6 +61,9 @@ const uiSlice = createSlice({
       if (action.payload !== 'drawing') {
         state.activeDrawingNodeId = null;
       }
+      if (action.payload !== 'routing') {
+        state.selectedRouteId = null;
+      }
     },
     setTopologyToolMode(state, action: PayloadAction<TopologyToolMode>) {
       state.topologyToolMode = action.payload;
@@ -69,6 +74,9 @@ const uiSlice = createSlice({
     },
     setSelectedTopologyObject(state, action: PayloadAction<SelectedTopologyObject>) {
       state.selectedTopologyObject = action.payload;
+    },
+    setSelectedRouteId(state, action: PayloadAction<string | null>) {
+      state.selectedRouteId = action.payload;
     },
     setActiveDrawingNodeId(state, action: PayloadAction<string | null>) {
       state.activeDrawingNodeId = action.payload;
@@ -102,6 +110,7 @@ export const {
   setActiveStep,
   setActiveDrawingNodeId,
   setMouseCadPosition,
+  setSelectedRouteId,
   setSelectedTopologyObject,
   setTopologyToolMode,
   setZoomPercent,

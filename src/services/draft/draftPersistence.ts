@@ -1,4 +1,9 @@
 import type { Project, WorkflowStep } from '@/domain/project/types';
+import {
+  defaultCableBundlePresets,
+  defaultCableSpecs,
+  defaultDeviceTypePresets,
+} from '@/domain/library/defaultDeviceLibrary';
 import type { TopologyToolMode, UiState } from '@/state/slices/uiSlice';
 
 const DRAFT_VERSION = 1;
@@ -36,6 +41,59 @@ export type PersistedDraft = {
   project: Project;
   ui: PersistedUiState;
 };
+
+function normalizeProject(project: Project): Project {
+  const legacyProject = project as Project & {
+    devices?: Array<{
+      id: string;
+      nodeId: string;
+      name: string;
+      deviceType: string;
+      connectionHeightMm: number;
+    }>;
+  };
+  const deviceInstances =
+    project.deviceInstances ??
+    legacyProject.devices?.map((device) => ({
+      id: device.id,
+      name: device.name,
+      deviceType: device.deviceType,
+    })) ??
+    [];
+  const connectionPoints =
+    project.connectionPoints ??
+    legacyProject.devices?.map((device) => ({
+      id: `connection-${device.id}`,
+      nodeId: device.nodeId,
+      deviceId: device.id,
+      portType: '未分类接线孔',
+      connectionHeightMm: device.connectionHeightMm,
+      cableBundle: {
+        id: `bundle-${device.id}`,
+        name: '未分类接线孔',
+        items: [],
+      },
+    })) ??
+    [];
+
+  return {
+    ...project,
+    topology: {
+      nodes: project.topology?.nodes ?? [],
+      channels: project.topology?.channels ?? [],
+    },
+    deviceInstances,
+    connectionPoints,
+    cableSpecs: project.cableSpecs?.length ? project.cableSpecs : defaultCableSpecs,
+    cableBundlePresets: project.cableBundlePresets?.length
+      ? project.cableBundlePresets
+      : defaultCableBundlePresets,
+    deviceTypePresets: project.deviceTypePresets?.length
+      ? project.deviceTypePresets
+      : defaultDeviceTypePresets,
+    routes: project.routes ?? [],
+  };
+}
 
 function storageIsAvailable() {
   if (typeof window === 'undefined') {
@@ -123,7 +181,7 @@ export function loadPersistedDraft(): PersistedDraft | null {
     return {
       version: DRAFT_VERSION,
       savedAt: parsed.savedAt ?? '',
-      project: parsed.project,
+      project: normalizeProject(parsed.project as Project),
       ui: parsed.ui,
     };
   } catch {

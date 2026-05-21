@@ -17,13 +17,16 @@ import { useAppSelector } from '@/hooks/useAppSelector';
 import {
   selectCalibration,
   selectCalibrationDraft,
+  selectConnectionPoints,
   selectProjectImage,
+  selectRoutes,
   selectTopology,
 } from '@/state/selectors/projectSelectors';
 import {
   selectActiveDrawingNodeId,
   selectActiveStep,
   selectLayerVisibility,
+  selectSelectedRouteId,
   selectSelectedTopologyObject,
   selectTopologyToolMode,
 } from '@/state/selectors/uiSelectors';
@@ -102,7 +105,7 @@ type ViewerOptions = OpenSeadragon.Options & {
 const stepHints = {
   calibration: '导入 PNG 底图后，左键标记两个 CAD 基准点；右键或中键按住拖拽可随时平移图纸。',
   drawing: '绘制模式下连续点击生成通道网络；选择模式下点击对象并可拖动节点。',
-  devices: '设备放置将在拓扑绘制完成后使用。',
+  devices: '设备页用于把拓扑节点设置为设备接线孔。',
   routing: '路由规划将在设备与拓扑完成后使用。',
   quantity: '算量将在路由与规格推演完成后使用。',
   export: '导出将在校准、绘制和算量完成后使用。',
@@ -135,9 +138,12 @@ export function DrawingWorkspace() {
   const calibration = useAppSelector(selectCalibration);
   const calibrationDraft = useAppSelector(selectCalibrationDraft);
   const topology = useAppSelector(selectTopology);
+  const routes = useAppSelector(selectRoutes);
+  const connectionPoints = useAppSelector(selectConnectionPoints);
   const activeDrawingNodeId = useAppSelector(selectActiveDrawingNodeId);
   const layerVisibility = useAppSelector(selectLayerVisibility);
   const selectedTopologyObject = useAppSelector(selectSelectedTopologyObject);
+  const selectedRouteId = useAppSelector(selectSelectedRouteId);
   const snappingEnabled = useAppSelector((state) => state.ui.snappingEnabled);
   const orthogonalLock = useAppSelector((state) => state.ui.orthogonalLock);
   const topologyToolMode = useAppSelector(selectTopologyToolMode);
@@ -588,13 +594,20 @@ export function DrawingWorkspace() {
       return;
     }
 
-    if (activeStep !== 'drawing') {
+    if (activeStep !== 'drawing' && activeStep !== 'devices') {
       return;
     }
 
     const viewerPoint = getViewerPointFromPointer(event);
     if (!viewerPoint) {
       setHoveredNodeId(null);
+      setPreview(null);
+      return;
+    }
+
+    if (activeStep === 'devices') {
+      const nodeHit = getNearestNodeHit(viewerPoint);
+      setHoveredNodeId(nodeHit?.node.id ?? null);
       setPreview(null);
       return;
     }
@@ -636,6 +649,17 @@ export function DrawingWorkspace() {
     leftPressRef.current = null;
 
     if (!press || Math.hypot(event.clientX - press.x, event.clientY - press.y) > 5) {
+      return;
+    }
+
+    if (activeStep === 'devices') {
+      const viewerPoint = getViewerPointFromPointer(event);
+      if (!viewerPoint || !calibration) {
+        return;
+      }
+
+      const nodeHit = getNearestNodeHit(viewerPoint);
+      dispatch(setSelectedTopologyObject(nodeHit ? { type: 'node', id: nodeHit.node.id } : null));
       return;
     }
 
@@ -895,6 +919,12 @@ export function DrawingWorkspace() {
   const previewEnd = preview ? cadToViewerElementPoint(preview.point) : null;
   const previewAxis = preview?.axis ?? null;
   const drawingBlocked = activeStep === 'drawing' && (!imageUrl || !calibration);
+  const highlightedRouteChannelIds = new Set(
+    routes
+      .filter((route) => route.status === 'valid' && (!selectedRouteId || route.id === selectedRouteId))
+      .flatMap((route) => route.pathSegmentIds),
+  );
+  const connectionNodeIds = new Set(connectionPoints.map((point) => point.nodeId));
 
   return (
     <main
@@ -918,6 +948,9 @@ export function DrawingWorkspace() {
                 className={[
                   'topology-channel',
                   `topology-channel-${channel.category}`,
+                  layerVisibility.cableRoutes && highlightedRouteChannelIds.has(channel.id)
+                    ? 'route-highlight'
+                    : '',
                   selectedTopologyObject?.type === 'channel' &&
                   selectedTopologyObject.id === channel.id
                     ? 'selected'
@@ -950,6 +983,7 @@ export function DrawingWorkspace() {
                   selectedTopologyObject?.type === 'node' && selectedTopologyObject.id === node.id
                     ? 'selected'
                     : '',
+                  connectionNodeIds.has(node.id) ? 'connection-point' : '',
                   hoveredNodeId === node.id || preview?.snappedNodeId === node.id ? 'snapped' : '',
                   activeDrawingNodeId === node.id ? 'active-start' : '',
                 ]

@@ -9,8 +9,11 @@ type Project = {
   image: ImageMetadata | null;
   calibration: CalibrationState | null;
   topology: TopologyGraph;
-  devices: DeviceNode[];
-  cableTemplates: CableTemplate[];
+  deviceInstances: DeviceInstance[];
+  connectionPoints: DeviceConnectionPoint[];
+  cableSpecs: CableSpec[];
+  cableBundlePresets: CableBundlePreset[];
+  deviceTypePresets: DeviceTypePreset[];
   routes: CableRoute[];
 };
 ```
@@ -20,4 +23,7 @@ type Project = {
 - `image` 只保存元数据，不保存浏览器运行时对象。
 - `calibration` 保存像素点、CAD 点、比例和偏移。
 - `topology` 保存节点与通道。
-- `routes` 保存路径所经过的通道 ID，并通过 `status` 标记是否需要重算。
+- `deviceInstances` 保存真实设备实例；同一设备可关联多个 `connectionPoints`。
+- `connectionPoints` 保存绑定到拓扑节点的设备接线孔、安装高度和线缆组合。
+- `cableSpecs`、`cableBundlePresets`、`deviceTypePresets` 保存当前工程内常用库；浏览器全局常用库由独立 `localStorage` key 保存。
+- `routes` 保存接线孔到接线孔的路径，并通过 `status` 标记是否需要重算。

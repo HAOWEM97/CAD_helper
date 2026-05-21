@@ -39,27 +39,77 @@ export type TopologyGraph = {
   channels: ChannelSegment[];
 };
 
-export type DeviceNode = {
+export type CableQuantity =
+  | {
+      mode: 'fixed';
+      count: number;
+    }
+  | {
+      mode: 'unlimited';
+    };
+
+export type CableSpec = {
   id: string;
-  nodeId: string;
-  name: string;
-  deviceType: string;
-  connectionHeightMm: number;
+  usage: string;
+  model: string;
+  diameterText: string;
+  diameterMinMm?: number;
+  diameterMaxMm?: number;
+  diameterMm?: number;
 };
 
-export type CableTemplate = {
+export type CableBundleItem = {
+  id: string;
+  cableSpecId: string;
+  usage: string;
+  model: string;
+  quantity: CableQuantity;
+  diameterMm?: number;
+};
+
+export type CableBundle = {
   id: string;
   name: string;
-  cableIds: string[];
+  items: CableBundleItem[];
+};
+
+export type CableBundlePreset = CableBundle;
+
+export type DevicePortPreset = {
+  id: string;
+  portType: string;
+  connectionHeightMm: number;
+  cableBundle: CableBundle;
+};
+
+export type DeviceTypePreset = {
+  id: string;
+  deviceType: string;
+  namePrefix: string;
+  ports: DevicePortPreset[];
+};
+
+export type DeviceInstance = {
+  id: string;
+  name: string;
+  deviceType: string;
+};
+
+export type DeviceConnectionPoint = {
+  id: string;
+  nodeId: string;
+  deviceId: string;
+  portType: string;
+  connectionHeightMm: number;
+  cableBundle: CableBundle;
 };
 
 export type CableRouteStatus = 'valid' | 'needs-recalculation';
 
 export type CableRoute = {
   id: string;
-  fromDeviceId: string;
-  toDeviceId: string;
-  cableIds: string[];
+  fromConnectionPointId: string;
+  toConnectionPointId: string;
   pathSegmentIds: string[];
   status: CableRouteStatus;
 };
@@ -71,8 +121,11 @@ export type Project = {
   calibrationDraft: CalibrationDraft;
   calibration: CalibrationState | null;
   topology: TopologyGraph;
-  devices: DeviceNode[];
-  cableTemplates: CableTemplate[];
+  deviceInstances: DeviceInstance[];
+  connectionPoints: DeviceConnectionPoint[];
+  cableSpecs: CableSpec[];
+  cableBundlePresets: CableBundlePreset[];
+  deviceTypePresets: DeviceTypePreset[];
   routes: CableRoute[];
 };
 

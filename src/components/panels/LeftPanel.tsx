@@ -94,7 +94,11 @@ export function LeftPanel() {
           </div>
           <div>
             <dt>设备</dt>
-            <dd>{project.devices.length}</dd>
+            <dd>{project.deviceInstances.length}</dd>
+          </div>
+          <div>
+            <dt>接线孔</dt>
+            <dd>{project.connectionPoints.length}</dd>
           </div>
           <div>
             <dt>路由</dt>

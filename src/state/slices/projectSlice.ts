@@ -6,13 +6,25 @@ import type {
   CalibrationState,
 } from '@/domain/cad-coordinate/types';
 import type { Point2D } from '@/domain/geometry/types';
+import {
+  defaultCableBundlePresets,
+  defaultCableSpecs,
+  defaultDeviceTypePresets,
+} from '@/domain/library/defaultDeviceLibrary';
 import type {
+  CableBundlePreset,
+  CableRoute,
+  CableSpec,
   ChannelCategory,
   ChannelSegment,
+  DeviceConnectionPoint,
+  DeviceInstance,
+  DeviceTypePreset,
   ImageMetadata,
   Project,
   TopologyNode,
 } from '@/domain/project/types';
+import { cableBundleToCableIds } from '@/domain/routing/connectionValidation';
 
 type ProjectState = {
   current: Project;
@@ -40,8 +52,11 @@ const initialProject: Project = {
     nodes: [],
     channels: [],
   },
-  devices: [],
-  cableTemplates: [],
+  deviceInstances: [],
+  connectionPoints: [],
+  cableSpecs: defaultCableSpecs,
+  cableBundlePresets: defaultCableBundlePresets,
+  deviceTypePresets: defaultDeviceTypePresets,
   routes: [],
 };
 
@@ -100,6 +115,67 @@ function markRoutesUsingChannelsForRecalculation(project: Project, channelIds: S
   );
 }
 
+function rebuildChannelCableIdsFromRoutes(project: Project) {
+  const pointById = new Map(project.connectionPoints.map((point) => [point.id, point]));
+  const cableIdsByChannelId = new Map<string, Set<string>>();
+
+  for (const route of project.routes) {
+    const fromPoint = pointById.get(route.fromConnectionPointId);
+    const cableIds = fromPoint ? cableBundleToCableIds(fromPoint.cableBundle) : [];
+    for (const channelId of route.pathSegmentIds) {
+      const channelCableIds = cableIdsByChannelId.get(channelId) ?? new Set<string>();
+      for (const cableId of cableIds) {
+        channelCableIds.add(cableId);
+      }
+      cableIdsByChannelId.set(channelId, channelCableIds);
+    }
+  }
+
+  for (const channel of project.topology.channels) {
+    channel.cableIds = Array.from(cableIdsByChannelId.get(channel.id) ?? []);
+  }
+}
+
+function extractTypeNumber(name: string, prefix: string) {
+  if (!name.startsWith(prefix)) {
+    return null;
+  }
+
+  const suffix = name.slice(prefix.length);
+  if (!/^[1-9]\d*$/.test(suffix)) {
+    return null;
+  }
+
+  return Number(suffix);
+}
+
+export function createDefaultDeviceName(
+  devices: DeviceInstance[],
+  namePrefix: string,
+  excludeDeviceId?: string,
+) {
+  const trimmedPrefix = namePrefix.trim() || '设备';
+  const usedNumbers = new Set<number>();
+
+  for (const device of devices) {
+    if (device.id === excludeDeviceId) {
+      continue;
+    }
+
+    const number = extractTypeNumber(device.name, trimmedPrefix);
+    if (number !== null) {
+      usedNumbers.add(number);
+    }
+  }
+
+  let nextNumber = 1;
+  while (usedNumbers.has(nextNumber)) {
+    nextNumber += 1;
+  }
+
+  return `${trimmedPrefix}${nextNumber}`;
+}
+
 function channelConnectsSameNodes(
   channel: ChannelSegment,
   startNodeId: string,
@@ -109,6 +185,15 @@ function channelConnectsSameNodes(
     (channel.startNodeId === startNodeId && channel.endNodeId === endNodeId) ||
     (channel.startNodeId === endNodeId && channel.endNodeId === startNodeId)
   );
+}
+
+function upsertById<T extends { id: string }>(items: T[], nextItem: T) {
+  const index = items.findIndex((item) => item.id === nextItem.id);
+  if (index >= 0) {
+    items[index] = nextItem;
+  } else {
+    items.push(nextItem);
+  }
 }
 
 const projectSlice = createSlice({
@@ -224,6 +309,11 @@ const projectSlice = createSlice({
           .filter((channel) => channel.startNodeId === nodeId || channel.endNodeId === nodeId)
           .map((channel) => channel.id),
       );
+      const deletedPointIds = new Set(
+        state.current.connectionPoints
+          .filter((point) => point.nodeId === nodeId)
+          .map((point) => point.id),
+      );
 
       state.current.topology.nodes = state.current.topology.nodes.filter(
         (node) => node.id !== nodeId,
@@ -231,7 +321,16 @@ const projectSlice = createSlice({
       state.current.topology.channels = state.current.topology.channels.filter(
         (channel) => channel.startNodeId !== nodeId && channel.endNodeId !== nodeId,
       );
-      markRoutesUsingChannelsForRecalculation(state.current, connectedChannelIds);
+      state.current.connectionPoints = state.current.connectionPoints.filter(
+        (point) => point.nodeId !== nodeId,
+      );
+      state.current.routes = state.current.routes.filter(
+        (route) =>
+          !deletedPointIds.has(route.fromConnectionPointId) &&
+          !deletedPointIds.has(route.toConnectionPointId) &&
+          !route.pathSegmentIds.some((segmentId) => connectedChannelIds.has(segmentId)),
+      );
+      rebuildChannelCableIdsFromRoutes(state.current);
     },
     deleteTopologyChannel(state, action: PayloadAction<string>) {
       const channelId = action.payload;
@@ -239,6 +338,7 @@ const projectSlice = createSlice({
         (channel) => channel.id !== channelId,
       );
       markRoutesUsingChannelsForRecalculation(state.current, new Set([channelId]));
+      rebuildChannelCableIdsFromRoutes(state.current);
     },
     updateTopologyChannelCategory(
       state,
@@ -271,12 +371,121 @@ const projectSlice = createSlice({
 
       markRoutesUsingChannelsForRecalculation(state.current, updatedChannelIds);
     },
+    upsertCableSpec(state, action: PayloadAction<CableSpec>) {
+      const spec = action.payload;
+      if (!spec.usage.trim() || !spec.model.trim()) {
+        return;
+      }
+      const duplicate = state.current.cableSpecs.find(
+        (item) => item.usage === spec.usage && item.model === spec.model,
+      );
+      upsertById(state.current.cableSpecs, duplicate ? { ...spec, id: duplicate.id } : spec);
+    },
+    upsertCableBundlePreset(state, action: PayloadAction<CableBundlePreset>) {
+      const bundle = action.payload;
+      if (!bundle.name.trim() || bundle.items.length === 0) {
+        return;
+      }
+      const duplicate = state.current.cableBundlePresets.find((item) => item.name === bundle.name);
+      upsertById(
+        state.current.cableBundlePresets,
+        duplicate ? { ...bundle, id: duplicate.id } : bundle,
+      );
+    },
+    upsertDeviceTypePreset(state, action: PayloadAction<DeviceTypePreset>) {
+      const preset = action.payload;
+      if (!preset.deviceType.trim() || preset.ports.length === 0) {
+        return;
+      }
+      const duplicate = state.current.deviceTypePresets.find(
+        (item) => item.deviceType === preset.deviceType,
+      );
+      upsertById(
+        state.current.deviceTypePresets,
+        duplicate ? { ...preset, id: duplicate.id } : preset,
+      );
+    },
+    upsertDeviceInstance(state, action: PayloadAction<DeviceInstance>) {
+      const device = action.payload;
+      if (!device.name.trim() || !device.deviceType.trim()) {
+        return;
+      }
+      upsertById(state.current.deviceInstances, device);
+    },
+    upsertConnectionPoint(state, action: PayloadAction<DeviceConnectionPoint>) {
+      const point = action.payload;
+      const nodeExists = state.current.topology.nodes.some((node) => node.id === point.nodeId);
+      const deviceExists = state.current.deviceInstances.some(
+        (device) => device.id === point.deviceId,
+      );
+      if (!nodeExists || !deviceExists || !point.portType.trim() || point.cableBundle.items.length === 0) {
+        return;
+      }
+
+      const existing = state.current.connectionPoints.find((item) => item.nodeId === point.nodeId);
+      const nextPoint = existing ? { ...point, id: existing.id } : point;
+      upsertById(state.current.connectionPoints, nextPoint);
+      state.current.routes = state.current.routes.map((route) =>
+        route.fromConnectionPointId === nextPoint.id || route.toConnectionPointId === nextPoint.id
+          ? { ...route, status: 'needs-recalculation' }
+          : route,
+      );
+      rebuildChannelCableIdsFromRoutes(state.current);
+    },
+    deleteConnectionPoint(state, action: PayloadAction<string>) {
+      const pointId = action.payload;
+      state.current.connectionPoints = state.current.connectionPoints.filter(
+        (point) => point.id !== pointId,
+      );
+      state.current.routes = state.current.routes.filter(
+        (route) =>
+          route.fromConnectionPointId !== pointId && route.toConnectionPointId !== pointId,
+      );
+      rebuildChannelCableIdsFromRoutes(state.current);
+    },
+    clearConnectionPointAssignments(state) {
+      state.current.connectionPoints = [];
+      state.current.deviceInstances = [];
+      state.current.routes = [];
+      rebuildChannelCableIdsFromRoutes(state.current);
+    },
+    createCableRoute(state, action: PayloadAction<CableRoute>) {
+      const route = {
+        ...action.payload,
+        pathSegmentIds: Array.from(new Set(action.payload.pathSegmentIds)),
+      };
+      const pointIds = new Set(state.current.connectionPoints.map((point) => point.id));
+      const channelIds = new Set(state.current.topology.channels.map((channel) => channel.id));
+      if (
+        !pointIds.has(route.fromConnectionPointId) ||
+        !pointIds.has(route.toConnectionPointId) ||
+        route.fromConnectionPointId === route.toConnectionPointId ||
+        route.pathSegmentIds.length === 0 ||
+        route.pathSegmentIds.some((segmentId) => !channelIds.has(segmentId))
+      ) {
+        return;
+      }
+
+      state.current.routes = [
+        ...state.current.routes.filter((item) => item.id !== route.id),
+        { ...route, status: 'valid' },
+      ];
+      rebuildChannelCableIdsFromRoutes(state.current);
+    },
+    deleteCableRoute(state, action: PayloadAction<string>) {
+      state.current.routes = state.current.routes.filter((route) => route.id !== action.payload);
+      rebuildChannelCableIdsFromRoutes(state.current);
+    },
   },
 });
 
 export const {
   addTopologyChannel,
   addTopologyNode,
+  clearConnectionPointAssignments,
+  createCableRoute,
+  deleteCableRoute,
+  deleteConnectionPoint,
   deleteTopologyChannel,
   deleteTopologyNode,
   moveTopologyNode,
@@ -287,5 +496,10 @@ export const {
   setCalibrationImagePoint,
   setImageMetadata,
   updateTopologyChannelCategory,
+  upsertCableBundlePreset,
+  upsertCableSpec,
+  upsertConnectionPoint,
+  upsertDeviceInstance,
+  upsertDeviceTypePreset,
 } = projectSlice.actions;
 export default projectSlice.reducer;
