@@ -1,8 +1,8 @@
 import type {
-  CableBundle,
-  CableBundleItem,
   CableQuantity,
   CableSpec,
+  ConnectionCableItem,
+  ConnectionPointPreset,
   DevicePortPreset,
   DeviceTypePreset,
 } from '@/domain/project/types';
@@ -79,15 +79,12 @@ function specId(model: string) {
   return `cable-spec-${model}`.replace(/\s+/g, '-');
 }
 
-function bundleItemFromRow(row: SourceRow): CableBundleItem {
-  const diameter = parseDiameterText(row.diameterText);
+function connectionItemFromRow(row: SourceRow): ConnectionCableItem {
   return {
-    id: `bundle-item-${row.deviceType}-${row.portType}-${row.usage}-${row.model}`.replace(/\s+/g, '-'),
+    id: `connection-cable-${row.deviceType}-${row.portType}-${row.usage}-${row.model}`.replace(/\s+/g, '-'),
     cableSpecId: specId(row.model),
-    usage: row.usage,
-    model: row.model,
     quantity: parseCableQuantity(row.quantityText),
-    diameterMm: diameter.diameterMm,
+    connectionHeightMm: row.heightMm,
   };
 }
 
@@ -109,22 +106,26 @@ export const defaultCableSpecs: CableSpec[] = Array.from(
   ).values(),
 );
 
-function buildBundle(deviceType: string, portType: string, rows: SourceRow[]): CableBundle {
+function buildConnectionPointPreset(
+  deviceType: string,
+  portType: string,
+  rows: SourceRow[],
+): ConnectionPointPreset {
   return {
-    id: `bundle-${deviceType}-${portType}`.replace(/\s+/g, '-'),
+    id: `connection-point-preset-${deviceType}-${portType}`.replace(/\s+/g, '-'),
     name: portType,
-    items: rows.map(bundleItemFromRow),
+    items: rows.map(connectionItemFromRow),
   };
 }
 
-export const defaultCableBundlePresets: CableBundle[] = Array.from(
+export const defaultConnectionPointPresets: ConnectionPointPreset[] = Array.from(
   new Map(
     sourceRows.map((row) => {
       const rows = sourceRows.filter(
         (item) => item.deviceType === row.deviceType && item.portType === row.portType,
       );
-      const bundle = buildBundle(row.deviceType, row.portType, rows);
-      return [`${row.deviceType}|${row.portType}`, bundle];
+      const preset = buildConnectionPointPreset(row.deviceType, row.portType, rows);
+      return [`${row.deviceType}|${row.portType}`, preset];
     }),
   ).values(),
 );
@@ -136,12 +137,10 @@ export const defaultDeviceTypePresets: DeviceTypePreset[] = Array.from(
   const portTypes = Array.from(new Set(deviceRows.map((row) => row.portType)));
   const ports: DevicePortPreset[] = portTypes.map((portType) => {
     const portRows = deviceRows.filter((row) => row.portType === portType);
-    const maxHeight = Math.max(...portRows.map((row) => row.heightMm));
     return {
       id: `port-preset-${deviceType}-${portType}`.replace(/\s+/g, '-'),
       portType,
-      connectionHeightMm: maxHeight,
-      cableBundle: buildBundle(deviceType, portType, portRows),
+      items: portRows.map(connectionItemFromRow),
     };
   });
 

@@ -1,33 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
-import {
-  parseDiameterText,
-  parseCableQuantity,
-} from '@/domain/library/defaultDeviceLibrary';
+import { parseCableQuantity, parseDiameterText } from '@/domain/library/defaultDeviceLibrary';
 import type {
-  CableBundle,
-  CableBundleItem,
   CableSpec,
   ChannelCategory,
+  ConnectionCableItem,
+  ConnectionPointPreset,
   DeviceConnectionPoint,
   DeviceInstance,
   DeviceTypePreset,
 } from '@/domain/project/types';
 import {
-  bundleHasUnlimitedCapacity,
-  summarizeCableBundle,
-  validateConnectionBundles,
+  connectionItemsHaveUnlimitedCapacity,
+  quantityText,
+  summarizeConnectionItems,
+  validateConnectionItems,
 } from '@/domain/routing/connectionValidation';
 import { findShortestChannelPath } from '@/domain/routing/shortestPath';
 import { findConnectedChannelIds } from '@/domain/topology/topologyGeometry';
 import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAppSelector } from '@/hooks/useAppSelector';
 import {
-  selectCableBundlePresets,
   selectCableSpecs,
   selectCalibration,
   selectCalibrationDraft,
   selectConnectionPoints,
+  selectConnectionPointPresets,
   selectDeviceInstances,
   selectDeviceTypePresets,
   selectProjectImage,
@@ -46,17 +44,17 @@ import {
   setActiveCalibrationPoint,
   setCalibrationCadCoordinate,
   updateTopologyChannelCategory,
-  upsertCableBundlePreset,
   upsertCableSpec,
   upsertConnectionPoint,
+  upsertConnectionPointPreset,
   upsertDeviceInstance,
   upsertDeviceTypePreset,
 } from '@/state/slices/projectSlice';
 import { setSelectedRouteId, toggleRightPanelCollapsed } from '@/state/slices/uiSlice';
 import {
   loadGlobalPresetLibrary,
-  upsertGlobalCableBundlePreset,
   upsertGlobalCableSpec,
+  upsertGlobalConnectionPointPreset,
   upsertGlobalDeviceTypePreset,
 } from '@/services/presets/globalPresetLibrary';
 
@@ -71,7 +69,7 @@ const stepGuidance = {
   },
   devices: {
     title: '设备接线孔',
-    body: '点击拓扑节点后设置设备名称、设备类型、接线孔类型和线缆组合。',
+    body: '点击拓扑节点后设置设备来源或自定义接线孔，并配置线缆数量与接线点高度。',
   },
   routing: {
     title: '路由代办',
@@ -102,38 +100,43 @@ function parseNumberInput(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function quantityToText(item: CableBundleItem) {
-  return item.quantity.mode === 'unlimited' ? '不限' : String(item.quantity.count);
-}
-
-function cableItemToSpec(item: CableBundleItem): CableSpec {
-  return {
-    id: item.cableSpecId || createPanelId('cable-spec'),
-    usage: item.usage.trim(),
-    model: item.model.trim(),
-    diameterText: item.diameterMm ? String(item.diameterMm) : '',
-    diameterMm: item.diameterMm,
-    diameterMinMm: item.diameterMm,
-    diameterMaxMm: item.diameterMm,
-  };
-}
-
-function cloneBundle(bundle: CableBundle): CableBundle {
-  return {
-    ...bundle,
-    id: createPanelId('bundle'),
-    items: bundle.items.map((item) => ({ ...item, id: createPanelId('bundle-item') })),
-  };
-}
-
 function connectionLabel(
   point: DeviceConnectionPoint,
   devices: DeviceInstance[],
-  includeBundle = false,
 ) {
+  if (point.mode === 'custom') {
+    return `自定义 / ${point.portType}`;
+  }
+
   const device = devices.find((item) => item.id === point.deviceId);
-  const base = `${device?.name ?? '未知设备'} / ${point.portType}`;
-  return includeBundle ? `${base} / ${summarizeCableBundle(point.cableBundle)}` : base;
+  return `${device?.name ?? '未知设备'} / ${point.portType}`;
+}
+
+function cloneConnectionItems(items: ConnectionCableItem[]) {
+  return items.map((item) => ({ ...item, id: createPanelId('connection-cable') }));
+}
+
+function specForItem(item: ConnectionCableItem, cableSpecs: CableSpec[]) {
+  return cableSpecs.find((spec) => spec.id === item.cableSpecId) ?? null;
+}
+
+function buildCableSpec(model: string, usage: string, diameterText: string): CableSpec {
+  const diameter = parseDiameterText(diameterText);
+  return {
+    id: `cable-spec-${model}`.replace(/\s+/g, '-'),
+    usage: usage.trim(),
+    model: model.trim(),
+    diameterText: diameterText.trim(),
+    ...diameter,
+  };
+}
+
+function connectionPointPresetFromItems(name: string, items: ConnectionCableItem[]): ConnectionPointPreset {
+  return {
+    id: createPanelId('connection-point-preset'),
+    name: name.trim(),
+    items: cloneConnectionItems(items),
+  };
 }
 
 function formatImagePoint(point: CalibrationDraftPoint['imagePoint']) {
@@ -338,6 +341,116 @@ function SelectedTopologySummary() {
   return null;
 }
 
+function CableItemsTable({
+  cableSpecs,
+  editable,
+  items,
+  onChangeItem,
+  onRemoveItem,
+}: {
+  cableSpecs: CableSpec[];
+  editable: boolean;
+  items: ConnectionCableItem[];
+  onChangeItem?: (index: number, patch: Partial<ConnectionCableItem>) => void;
+  onRemoveItem?: (index: number) => void;
+}) {
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
+
+  if (items.length === 0) {
+    return (
+      <div className="empty-state compact-empty">
+        <strong>暂无线缆</strong>
+      </div>
+    );
+  }
+
+  return (
+    <div className="connection-cable-table">
+      <div className="connection-cable-head">
+        <span>线缆型号</span>
+        <span>数量</span>
+        <span>高度</span>
+        {editable && <span />}
+      </div>
+      {items.map((item, index) => {
+        const spec = specForItem(item, cableSpecs);
+        const expanded = expandedItemIds.has(item.id);
+        return (
+          <div className="connection-cable-entry" key={item.id}>
+            <div className="connection-cable-row">
+              {editable ? (
+                <select
+                  onChange={(event) => onChangeItem?.(index, { cableSpecId: event.target.value })}
+                  value={item.cableSpecId}
+                >
+                  {cableSpecs.map((cableSpec) => (
+                    <option key={cableSpec.id} value={cableSpec.id}>
+                      {cableSpec.model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <button
+                  className="link-button cable-model-button"
+                  onClick={() => {
+                    setExpandedItemIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(item.id)) {
+                        next.delete(item.id);
+                      } else {
+                        next.add(item.id);
+                      }
+                      return next;
+                    });
+                  }}
+                  type="button"
+                >
+                  {spec?.model ?? '未知型号'}
+                </button>
+              )}
+              <input
+                disabled={!editable}
+                onChange={(event) =>
+                  onChangeItem?.(index, { quantity: parseCableQuantity(event.target.value) })
+                }
+                value={quantityText(item.quantity)}
+              />
+              <input
+                disabled={!editable}
+                inputMode="decimal"
+                onChange={(event) => {
+                  const nextHeight = parseNumberInput(event.target.value);
+                  if (nextHeight !== null) {
+                    onChangeItem?.(index, { connectionHeightMm: nextHeight });
+                  }
+                }}
+                value={String(item.connectionHeightMm)}
+              />
+              {editable && (
+                <button
+                  aria-label="删除线缆"
+                  className="icon-button danger-icon"
+                  onClick={() => onRemoveItem?.(index)}
+                  title="删除线缆"
+                  type="button"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {(expanded || editable) && spec && (
+              <div className="connection-cable-detail">
+                <span>用途：{spec.usage}</span>
+                <span>外径：{spec.diameterText || (spec.diameterMm ? `${spec.diameterMm}mm` : '未填写')}</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function DeviceConnectionEditor() {
   const dispatch = useAppDispatch();
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
@@ -345,7 +458,7 @@ function DeviceConnectionEditor() {
   const deviceInstances = useAppSelector(selectDeviceInstances);
   const connectionPoints = useAppSelector(selectConnectionPoints);
   const cableSpecs = useAppSelector(selectCableSpecs);
-  const bundlePresets = useAppSelector(selectCableBundlePresets);
+  const connectionPointPresets = useAppSelector(selectConnectionPointPresets);
   const projectDeviceTypePresets = useAppSelector(selectDeviceTypePresets);
   const routes = useAppSelector(selectRoutes);
   const [globalLibrary, setGlobalLibrary] = useState(() => loadGlobalPresetLibrary());
@@ -357,9 +470,9 @@ function DeviceConnectionEditor() {
     () => [...cableSpecs, ...globalLibrary.cableSpecs],
     [cableSpecs, globalLibrary.cableSpecs],
   );
-  const allBundlePresets = useMemo(
-    () => [...bundlePresets, ...globalLibrary.cableBundlePresets],
-    [bundlePresets, globalLibrary.cableBundlePresets],
+  const allConnectionPointPresets = useMemo(
+    () => [...connectionPointPresets, ...globalLibrary.connectionPointPresets],
+    [connectionPointPresets, globalLibrary.connectionPointPresets],
   );
   const node =
     selectedObject?.type === 'node'
@@ -368,22 +481,31 @@ function DeviceConnectionEditor() {
   const existingPoint = node
     ? connectionPoints.find((point) => point.nodeId === node.id) ?? null
     : null;
-  const existingDevice = existingPoint
+  const existingDevice = existingPoint?.deviceId
     ? deviceInstances.find((device) => device.id === existingPoint.deviceId) ?? null
     : null;
-  const [deviceType, setDeviceType] = useState('');
+  const [source, setSource] = useState('custom');
   const [deviceId, setDeviceId] = useState('');
   const [deviceName, setDeviceName] = useState('');
   const [portType, setPortType] = useState('');
-  const [height, setHeight] = useState('');
-  const [bundle, setBundle] = useState<CableBundle>({
-    id: createPanelId('bundle'),
-    name: '',
-    items: [],
-  });
-  const [saveSpecs, setSaveSpecs] = useState(false);
-  const [saveBundle, setSaveBundle] = useState(false);
+  const [items, setItems] = useState<ConnectionCableItem[]>([]);
+  const [saveConnectionPointPreset, setSaveConnectionPointPreset] = useState(false);
   const [saveDeviceType, setSaveDeviceType] = useState(false);
+  const [newCableModel, setNewCableModel] = useState('');
+  const [newCableUsage, setNewCableUsage] = useState('');
+  const [newCableDiameter, setNewCableDiameter] = useState('');
+  const [saveNewCableGlobal, setSaveNewCableGlobal] = useState(true);
+  const selectedDevicePreset =
+    source === 'custom'
+      ? null
+      : allDeviceTypePresets.find((preset) => preset.deviceType === source) ?? null;
+  const editable = source === 'custom';
+  const availableDevices = deviceInstances.filter((device) => device.deviceType === source);
+  const canSave =
+    portType.trim() !== '' &&
+    items.length > 0 &&
+    items.every((item) => item.cableSpecId && Number.isFinite(item.connectionHeightMm)) &&
+    (source === 'custom' || deviceName.trim() !== '');
   const clearAllButton = connectionPoints.length > 0 ? (
     <button
       className="danger-button"
@@ -395,23 +517,20 @@ function DeviceConnectionEditor() {
   ) : null;
 
   useEffect(() => {
-    if (existingPoint && existingDevice) {
-      setDeviceType(existingDevice.deviceType);
-      setDeviceId(existingDevice.id);
-      setDeviceName(existingDevice.name);
+    if (existingPoint) {
+      setSource(existingPoint.mode === 'custom' ? 'custom' : existingDevice?.deviceType ?? 'custom');
+      setDeviceId(existingPoint.deviceId ?? '');
+      setDeviceName(existingDevice?.name ?? '');
       setPortType(existingPoint.portType);
-      setHeight(String(existingPoint.connectionHeightMm));
-      setBundle(cloneBundle(existingPoint.cableBundle));
+      setItems(cloneConnectionItems(existingPoint.items));
     } else {
-      setDeviceType('');
+      setSource('custom');
       setDeviceId('');
       setDeviceName('');
       setPortType('');
-      setHeight('');
-      setBundle({ id: createPanelId('bundle'), name: '', items: [] });
+      setItems([]);
     }
-    setSaveSpecs(false);
-    setSaveBundle(false);
+    setSaveConnectionPointPreset(false);
     setSaveDeviceType(false);
   }, [existingDevice?.deviceType, existingDevice?.id, existingDevice?.name, existingPoint?.id, node?.id]);
 
@@ -420,340 +539,312 @@ function DeviceConnectionEditor() {
       <div className="device-panel">
         <div className="empty-state">
           <strong>请选择拓扑节点</strong>
-          <p>在画布中点击一个拓扑节点，将它设置为某台设备的接线孔。</p>
+          <p>在画布中点击一个拓扑节点，将它设置为设备接线孔或自定义接线孔。</p>
         </div>
         {clearAllButton}
       </div>
     );
   }
 
-  const matchedPreset = allDeviceTypePresets.find((preset) => preset.deviceType === deviceType);
-  const availableDevices = deviceInstances.filter((device) => device.deviceType === deviceType);
-  const parsedHeight = parseNumberInput(height);
-  const canSave =
-    deviceType.trim() !== '' &&
-    deviceName.trim() !== '' &&
-    portType.trim() !== '' &&
-    parsedHeight !== null &&
-    bundle.items.length > 0 &&
-    bundle.items.every((item) => item.usage.trim() && item.model.trim());
-
   function applyPortPreset(nextPortType: string) {
-    const portPreset = matchedPreset?.ports.find((port) => port.portType === nextPortType);
+    const portPreset = selectedDevicePreset?.ports.find((port) => port.portType === nextPortType);
     setPortType(nextPortType);
-    if (!portPreset) {
-      return;
+    if (portPreset) {
+      setItems(cloneConnectionItems(portPreset.items));
     }
-    setHeight(String(portPreset.connectionHeightMm));
-    setBundle(cloneBundle(portPreset.cableBundle));
   }
 
-  function updateBundleItem(index: number, patch: Partial<CableBundleItem>) {
-    setBundle((current) => ({
+  function addCableItem(cableSpecId = allCableSpecs[0]?.id ?? '') {
+    if (!cableSpecId) {
+      return;
+    }
+    setItems((current) => [
       ...current,
-      items: current.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
-      ),
-    }));
+      {
+        id: createPanelId('connection-cable'),
+        cableSpecId,
+        quantity: { mode: 'fixed', count: 1 },
+        connectionHeightMm: 500,
+      },
+    ]);
+  }
+
+  function updateCableItem(index: number, patch: Partial<ConnectionCableItem>) {
+    setItems((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function saveNewCableSpec() {
+    if (!newCableModel.trim() || !newCableUsage.trim()) {
+      return;
+    }
+    const spec = buildCableSpec(newCableModel, newCableUsage, newCableDiameter);
+    dispatch(upsertCableSpec(spec));
+    if (saveNewCableGlobal) {
+      upsertGlobalCableSpec(spec);
+    }
+    setGlobalLibrary(loadGlobalPresetLibrary());
+    setNewCableModel('');
+    setNewCableUsage('');
+    setNewCableDiameter('');
   }
 
   return (
     <div className="device-panel">
-      <div className="property-form">
+      <div className="property-form compact-form">
         <label>
-          <span>设备类型模板</span>
+          <span>接线孔来源</span>
           <select
             onChange={(event) => {
-              const preset = allDeviceTypePresets.find((item) => item.id === event.target.value);
-              if (!preset) {
-                return;
-              }
-              setDeviceType(preset.deviceType);
+              const nextSource = event.target.value;
+              setSource(nextSource);
               setDeviceId('');
-              setDeviceName(createDefaultDeviceName(deviceInstances, preset.namePrefix));
-              const firstPort = preset.ports[0];
-              if (firstPort) {
-                setPortType(firstPort.portType);
-                setHeight(String(firstPort.connectionHeightMm));
-                setBundle(cloneBundle(firstPort.cableBundle));
-              }
+              setDeviceName(
+                nextSource === 'custom'
+                  ? ''
+                  : createDefaultDeviceName(
+                      deviceInstances,
+                      allDeviceTypePresets.find((preset) => preset.deviceType === nextSource)
+                        ?.namePrefix ?? nextSource,
+                    ),
+              );
+              setPortType('');
+              setItems([]);
             }}
-            value=""
+            value={source}
           >
-            <option value="">选择模板</option>
+            <option value="custom">自定义接线孔</option>
             {allDeviceTypePresets.map((preset) => (
-              <option key={preset.id} value={preset.id}>
+              <option key={preset.id} value={preset.deviceType}>
                 {preset.deviceType}
               </option>
             ))}
           </select>
         </label>
 
-        <label>
-          <span>设备种类</span>
-          <input
-            onChange={(event) => {
-              const nextType = event.target.value;
-              setDeviceType(nextType);
-              setDeviceId('');
-              if (!deviceName.trim()) {
-                setDeviceName(createDefaultDeviceName(deviceInstances, nextType));
-              }
-            }}
-            placeholder="主机"
-            value={deviceType}
-          />
-        </label>
+        {source !== 'custom' && (
+          <>
+            <label>
+              <span>设备实例</span>
+              <select
+                onChange={(event) => {
+                  const nextDeviceId = event.target.value;
+                  setDeviceId(nextDeviceId);
+                  const nextDevice = deviceInstances.find((device) => device.id === nextDeviceId);
+                  setDeviceName(
+                    nextDevice?.name ?? createDefaultDeviceName(deviceInstances, source),
+                  );
+                }}
+                value={deviceId}
+              >
+                <option value="">新建设备</option>
+                {availableDevices.map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {device.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>设备名称</span>
+              <input
+                onChange={(event) => setDeviceName(event.target.value)}
+                placeholder={createDefaultDeviceName(deviceInstances, source)}
+                value={deviceName}
+              />
+            </label>
+            <label>
+              <span>接线孔类型</span>
+              <select onChange={(event) => applyPortPreset(event.target.value)} value={portType}>
+                <option value="">选择接线孔</option>
+                {selectedDevicePreset?.ports.map((port) => (
+                  <option key={port.id} value={port.portType}>
+                    {port.portType}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
 
-        <label>
-          <span>设备实例</span>
-          <select
-            onChange={(event) => {
-              const nextDeviceId = event.target.value;
-              setDeviceId(nextDeviceId);
-              const nextDevice = deviceInstances.find((device) => device.id === nextDeviceId);
-              if (nextDevice) {
-                setDeviceName(nextDevice.name);
-                setDeviceType(nextDevice.deviceType);
-              } else {
-                setDeviceName(createDefaultDeviceName(deviceInstances, deviceType));
-              }
-            }}
-            value={deviceId}
-          >
-            <option value="">新建设备</option>
-            {availableDevices.map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <span>设备名称</span>
-          <input
-            onChange={(event) => setDeviceName(event.target.value)}
-            placeholder={createDefaultDeviceName(deviceInstances, deviceType)}
-            value={deviceName}
-          />
-        </label>
-
-        <label>
-          <span>接线孔类型</span>
-          <select
-            onChange={(event) => applyPortPreset(event.target.value)}
-            value={portType}
-          >
-            <option value="">选择接线孔</option>
-            {matchedPreset?.ports.map((port) => (
-              <option key={port.id} value={port.portType}>
-                {port.portType}
-              </option>
-            ))}
-            {portType && !matchedPreset?.ports.some((port) => port.portType === portType) && (
-              <option value={portType}>{portType}</option>
-            )}
-          </select>
-        </label>
-
-        <label>
-          <span>自定义接线孔类型</span>
-          <input
-            onChange={(event) => {
-              setPortType(event.target.value);
-              setBundle((current) => ({ ...current, name: event.target.value }));
-            }}
-            placeholder="主机到储能"
-            value={portType}
-          />
-        </label>
-
-        <label>
-          <span>安装高度 mm</span>
-          <input
-            inputMode="decimal"
-            onChange={(event) => setHeight(event.target.value)}
-            placeholder="800"
-            type="text"
-            value={height}
-          />
-        </label>
-
-        <label>
-          <span>套用线缆组合</span>
-          <select
-            onChange={(event) => {
-              const preset = allBundlePresets.find((item) => item.id === event.target.value);
-              if (preset) {
-                setBundle(cloneBundle(preset));
-              }
-            }}
-            value=""
-          >
-            <option value="">选择组合</option>
-            {allBundlePresets.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {source === 'custom' && (
+          <>
+            <label>
+              <span>接线孔名称</span>
+              <input
+                onChange={(event) => setPortType(event.target.value)}
+                placeholder="主机到储能"
+                value={portType}
+              />
+            </label>
+            <label>
+              <span>套用常用接线孔</span>
+              <select
+                onChange={(event) => {
+                  const preset = allConnectionPointPresets.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  if (preset) {
+                    setPortType(preset.name);
+                    setItems(cloneConnectionItems(preset.items));
+                  }
+                }}
+                value=""
+              >
+                <option value="">选择常用接线孔</option>
+                {allConnectionPointPresets.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
       </div>
 
       <div className="cable-editor">
         <div className="panel-heading compact-heading">
-          <h2>线缆组合</h2>
-          <span>{bundle.items.length} 项</span>
+          <h2>接线孔明细</h2>
+          <span>{items.length} 种线缆</span>
         </div>
-        {bundle.items.map((item, index) => (
-          <div className="cable-row" key={item.id}>
-            <input
-              onChange={(event) => updateBundleItem(index, { usage: event.target.value })}
-              placeholder="用途"
-              value={item.usage}
-            />
-            <input
-              onChange={(event) => updateBundleItem(index, { model: event.target.value })}
-              placeholder="型号"
-              value={item.model}
-            />
-            <input
-              onChange={(event) => {
-                updateBundleItem(index, {
-                  quantity: parseCableQuantity(event.target.value),
-                });
-              }}
-              placeholder="数量"
-              value={quantityToText(item)}
-            />
-            <input
-              inputMode="decimal"
-              onChange={(event) => {
-                const diameter = parseNumberInput(event.target.value);
-                updateBundleItem(index, { diameterMm: diameter ?? undefined });
-              }}
-              placeholder="外径"
-              value={item.diameterMm === undefined ? '' : String(item.diameterMm)}
-            />
-            <button
-              className="ghost-button compact"
-              onClick={() =>
-                setBundle((current) => ({
-                  ...current,
-                  items: current.items.filter((_, itemIndex) => itemIndex !== index),
-                }))
-              }
-              type="button"
-            >
-              删除
-            </button>
-          </div>
-        ))}
-        <button
-          className="ghost-button compact"
-          onClick={() => {
-            const firstSpec = allCableSpecs[0];
-            setBundle((current) => ({
-              ...current,
-              name: current.name || portType,
-              items: [
-                ...current.items,
-                {
-                  id: createPanelId('bundle-item'),
-                  cableSpecId: firstSpec?.id ?? createPanelId('cable-spec'),
-                  usage: firstSpec?.usage ?? '',
-                  model: firstSpec?.model ?? '',
-                  quantity: { mode: 'fixed', count: 1 },
-                  diameterMm: firstSpec?.diameterMm,
-                },
-              ],
-            }));
-          }}
-          type="button"
-        >
-          添加线缆
-        </button>
+        <CableItemsTable
+          cableSpecs={allCableSpecs}
+          editable={editable}
+          items={items}
+          onChangeItem={updateCableItem}
+          onRemoveItem={(index) =>
+            setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))
+          }
+        />
+        {source !== 'custom' && items.length > 0 && (
+          <button
+            className="ghost-button compact"
+            onClick={() => {
+              setSource('custom');
+              setDeviceId('');
+              setDeviceName('');
+              setPortType(portType ? `${portType} 自定义` : '自定义接线孔');
+              setItems(cloneConnectionItems(items));
+            }}
+            type="button"
+          >
+            复制为自定义
+          </button>
+        )}
+        {source === 'custom' && (
+          <button className="ghost-button compact" onClick={() => addCableItem()} type="button">
+            添加线缆
+          </button>
+        )}
       </div>
 
-      <div className="property-form">
-        <label className="inline-check">
-          <input
-            checked={saveSpecs}
-            onChange={(event) => setSaveSpecs(event.target.checked)}
-            type="checkbox"
-          />
-          <span>自定义线缆加入常用库</span>
-        </label>
-        <label className="inline-check">
-          <input
-            checked={saveBundle}
-            onChange={(event) => setSaveBundle(event.target.checked)}
-            type="checkbox"
-          />
-          <span>自定义线缆组合加入常用库</span>
-        </label>
-        <label className="inline-check">
-          <input
-            checked={saveDeviceType}
-            onChange={(event) => setSaveDeviceType(event.target.checked)}
-            type="checkbox"
-          />
-          <span>自定义设备类型加入常用库</span>
-        </label>
+      {source === 'custom' && (
+        <div className="property-form compact-form new-cable-form">
+          <div className="panel-heading compact-heading">
+            <h2>新增线缆到线缆库</h2>
+            <span>可选</span>
+          </div>
+          <label>
+            <span>线缆型号</span>
+            <input onChange={(event) => setNewCableModel(event.target.value)} value={newCableModel} />
+          </label>
+          <label>
+            <span>用途/类型</span>
+            <input onChange={(event) => setNewCableUsage(event.target.value)} value={newCableUsage} />
+          </label>
+          <label>
+            <span>外径</span>
+            <input
+              onChange={(event) => setNewCableDiameter(event.target.value)}
+              placeholder="约 11.0"
+              value={newCableDiameter}
+            />
+          </label>
+          <label className="inline-check">
+            <input
+              checked={saveNewCableGlobal}
+              onChange={(event) => setSaveNewCableGlobal(event.target.checked)}
+              type="checkbox"
+            />
+            <span>加入全局线缆库</span>
+          </label>
+          <button
+            className="ghost-button compact"
+            disabled={!newCableModel.trim() || !newCableUsage.trim()}
+            onClick={saveNewCableSpec}
+            type="button"
+          >
+            保存线缆
+          </button>
+        </div>
+      )}
+
+      <div className="property-form compact-form">
+        {source === 'custom' && (
+          <label className="inline-check">
+            <input
+              checked={saveConnectionPointPreset}
+              onChange={(event) => setSaveConnectionPointPreset(event.target.checked)}
+              type="checkbox"
+            />
+            <span>自定义接线孔加入全局常用库</span>
+          </label>
+        )}
+        {source === 'custom' && (
+          <label className="inline-check">
+            <input
+              checked={saveDeviceType}
+              onChange={(event) => setSaveDeviceType(event.target.checked)}
+              type="checkbox"
+            />
+            <span>另存为自定义设备类型模板</span>
+          </label>
+        )}
         <button
           className="primary-button"
           disabled={!canSave}
           onClick={() => {
-            if (parsedHeight === null) {
-              return;
+            const nextItems = cloneConnectionItems(items);
+            let nextDeviceId: string | undefined;
+            if (source !== 'custom') {
+              nextDeviceId = deviceId || createPanelId('device');
+              dispatch(
+                upsertDeviceInstance({
+                  id: nextDeviceId,
+                  name: deviceName.trim(),
+                  deviceType: source,
+                }),
+              );
             }
 
-            const nextDeviceId = deviceId || createPanelId('device');
-            dispatch(
-              upsertDeviceInstance({
-                id: nextDeviceId,
-                name: deviceName.trim(),
-                deviceType: deviceType.trim(),
-              }),
-            );
-            const nextBundle = {
-              ...bundle,
-              name: bundle.name || portType.trim(),
-            };
             dispatch(
               upsertConnectionPoint({
                 id: existingPoint?.id ?? createPanelId('connection-point'),
                 nodeId: node.id,
+                mode: source === 'custom' ? 'custom' : 'device',
                 deviceId: nextDeviceId,
                 portType: portType.trim(),
-                connectionHeightMm: parsedHeight,
-                cableBundle: nextBundle,
+                items: nextItems,
               }),
             );
 
-            if (saveSpecs) {
-              for (const item of nextBundle.items) {
-                const spec = cableItemToSpec(item);
-                dispatch(upsertCableSpec(spec));
-                upsertGlobalCableSpec(spec);
-              }
+            if (source === 'custom' && saveConnectionPointPreset) {
+              const preset = connectionPointPresetFromItems(portType, nextItems);
+              dispatch(upsertConnectionPointPreset(preset));
+              upsertGlobalConnectionPointPreset(preset);
             }
-            if (saveBundle) {
-              dispatch(upsertCableBundlePreset(nextBundle));
-              upsertGlobalCableBundlePreset(nextBundle);
-            }
-            if (saveDeviceType) {
+            if (source === 'custom' && saveDeviceType) {
               const preset: DeviceTypePreset = {
                 id: createPanelId('device-type-preset'),
-                deviceType: deviceType.trim(),
-                namePrefix: deviceType.trim(),
+                deviceType: portType.trim(),
+                namePrefix: portType.trim(),
                 ports: [
                   {
                     id: createPanelId('port-preset'),
                     portType: portType.trim(),
-                    connectionHeightMm: parsedHeight,
-                    cableBundle: nextBundle,
+                    items: nextItems,
                   },
                 ],
               };
@@ -781,21 +872,18 @@ function DeviceConnectionEditor() {
           </div>
         ) : (
           connectionPoints.map((point) => {
-            const device = deviceInstances.find((item) => item.id === point.deviceId);
             const routeStatus = routes.some((route) => route.fromConnectionPointId === point.id)
               ? '已路由'
               : routes.some((route) => route.toConnectionPointId === point.id)
                 ? '作为终点'
-                : bundleHasUnlimitedCapacity(point.cableBundle)
+                : connectionItemsHaveUnlimitedCapacity(point.items)
                   ? '承接端'
                   : '待路由';
             return (
               <div className="connection-row" key={point.id}>
-                <strong>{device?.name ?? '未知设备'}</strong>
-                <span>{device?.deviceType ?? '-'}</span>
-                <span>{point.portType}</span>
-                <span>{point.connectionHeightMm}mm</span>
-                <small>{summarizeCableBundle(point.cableBundle)}</small>
+                <strong>{connectionLabel(point, deviceInstances)}</strong>
+                <span>{point.items.length} 种线缆</span>
+                <small>{summarizeConnectionItems(point.items, allCableSpecs)}</small>
                 <em>{routeStatus}</em>
               </div>
             );
@@ -811,6 +899,7 @@ function RoutingTodoPanel() {
   const topology = useAppSelector(selectTopology);
   const deviceInstances = useAppSelector(selectDeviceInstances);
   const connectionPoints = useAppSelector(selectConnectionPoints);
+  const cableSpecs = useAppSelector(selectCableSpecs);
   const routes = useAppSelector(selectRoutes);
   const [activeStartId, setActiveStartId] = useState<string | null>(null);
   const [targetId, setTargetId] = useState('');
@@ -818,14 +907,14 @@ function RoutingTodoPanel() {
   const routeFromIds = new Set(routes.map((route) => route.fromConnectionPointId));
   const routeToIds = new Set(routes.map((route) => route.toConnectionPointId));
   const activeCandidates = connectionPoints.filter(
-    (point) => !bundleHasUnlimitedCapacity(point.cableBundle),
+    (point) => !connectionItemsHaveUnlimitedCapacity(point.items),
   );
   const compatibleTargets = activeStart
     ? connectionPoints
         .filter((point) => point.id !== activeStart.id)
         .map((point) => ({
           point,
-          validation: validateConnectionBundles(activeStart.cableBundle, point.cableBundle),
+          validation: validateConnectionItems(activeStart.items, point.items, cableSpecs),
         }))
     : [];
   const selectedTarget = compatibleTargets.find((item) => item.point.id === targetId) ?? null;
@@ -847,7 +936,7 @@ function RoutingTodoPanel() {
     },
     {
       title: '不限承接端',
-      items: connectionPoints.filter((point) => bundleHasUnlimitedCapacity(point.cableBundle)),
+      items: connectionPoints.filter((point) => connectionItemsHaveUnlimitedCapacity(point.items)),
     },
   ];
 
@@ -867,7 +956,7 @@ function RoutingTodoPanel() {
             group.items.map((point) => (
               <button
                 className={activeStartId === point.id ? 'route-row active' : 'route-row'}
-                disabled={bundleHasUnlimitedCapacity(point.cableBundle)}
+                disabled={connectionItemsHaveUnlimitedCapacity(point.items)}
                 key={point.id}
                 onClick={() => {
                   setActiveStartId(point.id);
@@ -876,7 +965,9 @@ function RoutingTodoPanel() {
                 type="button"
               >
                 <span>{connectionLabel(point, deviceInstances)}</span>
-                <strong>{bundleHasUnlimitedCapacity(point.cableBundle) ? '终点' : '起点'}</strong>
+                <strong>
+                  {connectionItemsHaveUnlimitedCapacity(point.items) ? '终点' : '起点'}
+                </strong>
               </button>
             ))
           )}
@@ -1060,7 +1151,7 @@ export function RightPanel() {
         <ul className="rule-list">
           <li>节点保存为设备接线孔，不再等同于整台设备。</li>
           <li>不限数量接线孔只作为承接终点，不生成主动待办。</li>
-          <li>常用库保存线缆规格、线缆组合和设备类型模板。</li>
+          <li>常用库保存线缆规格、接线孔模板和设备类型模板。</li>
         </ul>
       </section>
     </aside>

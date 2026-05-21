@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   loadGlobalPresetLibrary,
-  upsertGlobalCableBundlePreset,
   upsertGlobalCableSpec,
+  upsertGlobalConnectionPointPreset,
   upsertGlobalDeviceTypePreset,
 } from '@/services/presets/globalPresetLibrary';
 
@@ -32,17 +32,15 @@ describe('global preset library', () => {
       diameterText: '约 7.5',
       diameterMm: 7.5,
     });
-    upsertGlobalCableBundlePreset({
-      id: 'bundle-a',
+    upsertGlobalConnectionPointPreset({
+      id: 'connection-point-a',
       name: '主线',
       items: [
         {
           id: 'item-a',
           cableSpecId: 'spec-a',
-          usage: '通信线',
-          model: 'CAT6',
           quantity: { mode: 'fixed', count: 1 },
-          diameterMm: 7.5,
+          connectionHeightMm: 800,
         },
       ],
     });
@@ -63,7 +61,7 @@ describe('global preset library', () => {
         diameterMm: 7.5,
       },
     ]);
-    expect(library.cableBundlePresets).toHaveLength(1);
+    expect(library.connectionPointPresets).toHaveLength(1);
     expect(library.deviceTypePresets).toEqual([
       { id: 'device-type-a', deviceType: '主机', namePrefix: '主机', ports: [] },
     ]);

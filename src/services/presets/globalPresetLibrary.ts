@@ -1,16 +1,16 @@
 import type {
-  CableBundlePreset,
   CableSpec,
+  ConnectionPointPreset,
   DeviceTypePreset,
 } from '@/domain/project/types';
 
-const GLOBAL_PRESET_VERSION = 2;
-const GLOBAL_PRESET_STORAGE_KEY = 'cad-router-web:global-presets:v2';
+const GLOBAL_PRESET_VERSION = 3;
+const GLOBAL_PRESET_STORAGE_KEY = 'cad-router-web:global-presets:v3';
 
 export type GlobalPresetLibrary = {
   version: typeof GLOBAL_PRESET_VERSION;
   cableSpecs: CableSpec[];
-  cableBundlePresets: CableBundlePreset[];
+  connectionPointPresets: ConnectionPointPreset[];
   deviceTypePresets: DeviceTypePreset[];
   updatedAt: string;
 };
@@ -31,7 +31,7 @@ function emptyLibrary(): GlobalPresetLibrary {
   return {
     version: GLOBAL_PRESET_VERSION,
     cableSpecs: [],
-    cableBundlePresets: [],
+    connectionPointPresets: [],
     deviceTypePresets: [],
     updatedAt: '',
   };
@@ -74,8 +74,8 @@ export function loadGlobalPresetLibrary(): GlobalPresetLibrary {
     return {
       version: GLOBAL_PRESET_VERSION,
       cableSpecs: Array.isArray(parsed.cableSpecs) ? parsed.cableSpecs : [],
-      cableBundlePresets: Array.isArray(parsed.cableBundlePresets)
-        ? parsed.cableBundlePresets
+      connectionPointPresets: Array.isArray(parsed.connectionPointPresets)
+        ? parsed.connectionPointPresets
         : [],
       deviceTypePresets: Array.isArray(parsed.deviceTypePresets) ? parsed.deviceTypePresets : [],
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
@@ -95,20 +95,20 @@ export function upsertGlobalCableSpec(spec: CableSpec) {
   ];
   saveGlobalPresetLibrary({
     cableSpecs: nextSpecs,
-    cableBundlePresets: library.cableBundlePresets,
+    connectionPointPresets: library.connectionPointPresets,
     deviceTypePresets: library.deviceTypePresets,
   });
 }
 
-export function upsertGlobalCableBundlePreset(bundle: CableBundlePreset) {
+export function upsertGlobalConnectionPointPreset(preset: ConnectionPointPreset) {
   const library = loadGlobalPresetLibrary();
-  const nextBundles = [
-    ...library.cableBundlePresets.filter((item) => item.name !== bundle.name),
-    bundle,
+  const nextPresets = [
+    ...library.connectionPointPresets.filter((item) => item.name !== preset.name),
+    preset,
   ];
   saveGlobalPresetLibrary({
     cableSpecs: library.cableSpecs,
-    cableBundlePresets: nextBundles,
+    connectionPointPresets: nextPresets,
     deviceTypePresets: library.deviceTypePresets,
   });
 }
@@ -121,7 +121,7 @@ export function upsertGlobalDeviceTypePreset(preset: DeviceTypePreset) {
   ];
   saveGlobalPresetLibrary({
     cableSpecs: library.cableSpecs,
-    cableBundlePresets: library.cableBundlePresets,
+    connectionPointPresets: library.connectionPointPresets,
     deviceTypePresets: nextPresets,
   });
 }

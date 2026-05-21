@@ -1,7 +1,7 @@
 import type { Project, WorkflowStep } from '@/domain/project/types';
 import {
-  defaultCableBundlePresets,
   defaultCableSpecs,
+  defaultConnectionPointPresets,
   defaultDeviceTypePresets,
 } from '@/domain/library/defaultDeviceLibrary';
 import type { TopologyToolMode, UiState } from '@/state/slices/uiSlice';
@@ -44,14 +44,37 @@ export type PersistedDraft = {
 
 function normalizeProject(project: Project): Project {
   const legacyProject = project as Project & {
+    cableBundlePresets?: Array<{
+      id: string;
+      name: string;
+      items: Array<{
+        id: string;
+        cableSpecId: string;
+        quantity: Project['connectionPoints'][number]['items'][number]['quantity'];
+        connectionHeightMm?: number;
+      }>;
+    }>;
     devices?: Array<{
       id: string;
       nodeId: string;
       name: string;
       deviceType: string;
       connectionHeightMm: number;
+      cableBundle?: {
+        id: string;
+        name: string;
+        items: Array<{
+          id: string;
+          cableSpecId: string;
+          usage?: string;
+          model?: string;
+          quantity: Project['connectionPoints'][number]['items'][number]['quantity'];
+        }>;
+      };
     }>;
   };
+  const cableSpecs = project.cableSpecs?.length ? project.cableSpecs : defaultCableSpecs;
+  const cableSpecByModel = new Map(cableSpecs.map((spec) => [spec.model, spec]));
   const deviceInstances =
     project.deviceInstances ??
     legacyProject.devices?.map((device) => ({
@@ -60,19 +83,49 @@ function normalizeProject(project: Project): Project {
       deviceType: device.deviceType,
     })) ??
     [];
-  const connectionPoints =
-    project.connectionPoints ??
+  const connectionPoints = project.connectionPoints
+    ? project.connectionPoints.map((point) => {
+        const legacyPoint = point as typeof point & {
+          connectionHeightMm?: number;
+          cableBundle?: {
+            items: Array<{
+              id: string;
+              cableSpecId?: string;
+              model?: string;
+              quantity: Project['connectionPoints'][number]['items'][number]['quantity'];
+            }>;
+          };
+        };
+        if (Array.isArray(point.items)) {
+          return point;
+        }
+
+        return {
+          id: point.id,
+          nodeId: point.nodeId,
+          mode: point.deviceId ? ('device' as const) : ('custom' as const),
+          deviceId: point.deviceId,
+          portType: point.portType,
+          items:
+            legacyPoint.cableBundle?.items.map((item) => ({
+              id: item.id,
+              cableSpecId:
+                item.cableSpecId ??
+                (item.model ? cableSpecByModel.get(item.model)?.id : undefined) ??
+                item.id,
+              quantity: item.quantity,
+              connectionHeightMm: legacyPoint.connectionHeightMm ?? 0,
+            })) ?? [],
+        };
+      })
+    :
     legacyProject.devices?.map((device) => ({
       id: `connection-${device.id}`,
       nodeId: device.nodeId,
+      mode: 'device' as const,
       deviceId: device.id,
       portType: '未分类接线孔',
-      connectionHeightMm: device.connectionHeightMm,
-      cableBundle: {
-        id: `bundle-${device.id}`,
-        name: '未分类接线孔',
-        items: [],
-      },
+      items: [],
     })) ??
     [];
 
@@ -84,10 +137,10 @@ function normalizeProject(project: Project): Project {
     },
     deviceInstances,
     connectionPoints,
-    cableSpecs: project.cableSpecs?.length ? project.cableSpecs : defaultCableSpecs,
-    cableBundlePresets: project.cableBundlePresets?.length
-      ? project.cableBundlePresets
-      : defaultCableBundlePresets,
+    cableSpecs,
+    connectionPointPresets: project.connectionPointPresets?.length
+      ? project.connectionPointPresets
+      : defaultConnectionPointPresets,
     deviceTypePresets: project.deviceTypePresets?.length
       ? project.deviceTypePresets
       : defaultDeviceTypePresets,

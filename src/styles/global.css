@@ -739,6 +739,10 @@ button {
   gap: 12px;
 }
 
+.compact-form {
+  gap: 9px;
+}
+
 .property-form label {
   display: grid;
   gap: 6px;
@@ -809,9 +813,113 @@ button {
   color: var(--ink);
 }
 
+.connection-cable-table {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.connection-cable-head,
+.connection-cable-row {
+  display: grid;
+  grid-template-columns: minmax(112px, 1fr) 58px 66px auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.connection-cable-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.connection-cable-entry {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px;
+  background: #ffffff;
+}
+
+.connection-cable-row input,
+.connection-cable-row select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 7px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.connection-cable-row input:disabled {
+  background: #f4f6f1;
+  color: var(--ink);
+  opacity: 1;
+}
+
+.connection-cable-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cable-model-button {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: #edf2ec;
+  color: var(--accent-strong);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.danger-icon {
+  background: #fff0ef;
+  color: #8f2f2f;
+}
+
+.compact-empty {
+  padding: 10px;
+  font-size: 12px;
+}
+
+.new-cable-form {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+  background: #f8faf5;
+}
+
 .connection-row {
   display: grid;
-  grid-template-columns: 0.9fr 0.8fr 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
   border: 1px solid var(--line);
@@ -819,6 +927,11 @@ button {
   padding: 10px;
   background: #ffffff;
   font-size: 12px;
+}
+
+.connection-row > span {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .connection-row small {

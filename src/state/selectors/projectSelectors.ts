@@ -8,8 +8,8 @@ export const selectTopology = (state: RootState) => state.project.current.topolo
 export const selectDeviceInstances = (state: RootState) => state.project.current.deviceInstances;
 export const selectConnectionPoints = (state: RootState) => state.project.current.connectionPoints;
 export const selectCableSpecs = (state: RootState) => state.project.current.cableSpecs;
-export const selectCableBundlePresets = (state: RootState) =>
-  state.project.current.cableBundlePresets;
+export const selectConnectionPointPresets = (state: RootState) =>
+  state.project.current.connectionPointPresets;
 export const selectDeviceTypePresets = (state: RootState) =>
   state.project.current.deviceTypePresets;
 export const selectRoutes = (state: RootState) => state.project.current.routes;

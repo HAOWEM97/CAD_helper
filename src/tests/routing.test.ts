@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   defaultCableSpecs,
+  defaultConnectionPointPresets,
   defaultDeviceTypePresets,
   parseDiameterText,
 } from '@/domain/library/defaultDeviceLibrary';
-import { validateConnectionBundles } from '@/domain/routing/connectionValidation';
+import { validateConnectionItems } from '@/domain/routing/connectionValidation';
 import { findShortestChannelPath } from '@/domain/routing/shortestPath';
-import type { CableBundle, TopologyGraph } from '@/domain/project/types';
+import type { ConnectionCableItem, TopologyGraph } from '@/domain/project/types';
 
 const topology: TopologyGraph = {
   nodes: [
@@ -46,6 +47,15 @@ describe('device library and connection validation', () => {
   it('contains the Excel-derived default devices and cable diameter ranges', () => {
     expect(defaultDeviceTypePresets.map((preset) => preset.deviceType)).toContain('汇流排柜');
     expect(defaultCableSpecs).toHaveLength(8);
+    expect(
+      defaultDeviceTypePresets
+        .find((preset) => preset.deviceType === '主机')
+        ?.ports.find((port) => port.portType === '主机到终端')
+        ?.items.map((item) => item.connectionHeightMm),
+    ).toEqual([500, 600, 200, 800]);
+    expect(defaultConnectionPointPresets.some((preset) => preset.name === '主机到终端')).toBe(
+      true,
+    );
     expect(parseDiameterText('约 19.5 - 20.5')).toEqual({
       diameterMinMm: 19.5,
       diameterMaxMm: 20.5,
@@ -53,51 +63,48 @@ describe('device library and connection validation', () => {
     });
   });
 
-  it('matches finite bundles by usage, model and quantity', () => {
-    const bundle: CableBundle = {
-      id: 'bundle-a',
-      name: '快充主机到快充终端',
-      items: [
-        {
-          id: 'item-a',
-          cableSpecId: 'spec-a',
-          usage: '直流线',
-          model: 'YJV-1.8/3kV-1x120',
-          quantity: { mode: 'fixed', count: 4 },
-        },
-      ],
-    };
+  it('matches finite connection items by usage, model and quantity while ignoring height', () => {
+    const spec = defaultCableSpecs.find((item) => item.model === 'YJV-1.8/3kV-1x120')!;
+    const items: ConnectionCableItem[] = [
+      {
+        id: 'item-a',
+        cableSpecId: spec.id,
+        quantity: { mode: 'fixed', count: 4 },
+        connectionHeightMm: 600,
+      },
+    ];
 
-    expect(validateConnectionBundles(bundle, bundle).compatible).toBe(true);
     expect(
-      validateConnectionBundles(bundle, {
-        ...bundle,
-        items: [{ ...bundle.items[0], quantity: { mode: 'fixed', count: 2 } }],
-      }).compatible,
+      validateConnectionItems(
+        items,
+        [{ ...items[0], id: 'item-b', connectionHeightMm: 1200 }],
+        defaultCableSpecs,
+      ).compatible,
+    ).toBe(true);
+    expect(
+      validateConnectionItems(
+        items,
+        [{ ...items[0], quantity: { mode: 'fixed', count: 2 } }],
+        defaultCableSpecs,
+      ).compatible,
     ).toBe(false);
   });
 
   it('allows finite starts to connect to matching unlimited endpoints', () => {
-    const start: CableBundle = {
-      id: 'bundle-start',
-      name: '主机到汇流排',
-      items: [
-        {
-          id: 'item-start',
-          cableSpecId: 'spec-a',
-          usage: '直流线',
-          model: 'YJV-0.6/1kV-1x150',
-          quantity: { mode: 'fixed', count: 8 },
-        },
-      ],
-    };
-    const end: CableBundle = {
-      ...start,
-      id: 'bundle-end',
-      items: [{ ...start.items[0], id: 'item-end', quantity: { mode: 'unlimited' } }],
-    };
+    const spec = defaultCableSpecs.find((item) => item.model === 'YJV-0.6/1kV-1x150')!;
+    const start: ConnectionCableItem[] = [
+      {
+        id: 'item-start',
+        cableSpecId: spec.id,
+        quantity: { mode: 'fixed', count: 8 },
+        connectionHeightMm: 800,
+      },
+    ];
+    const end: ConnectionCableItem[] = [
+      { ...start[0], id: 'item-end', quantity: { mode: 'unlimited' }, connectionHeightMm: 500 },
+    ];
 
-    expect(validateConnectionBundles(start, end).compatible).toBe(true);
-    expect(validateConnectionBundles(end, start).compatible).toBe(false);
+    expect(validateConnectionItems(start, end, defaultCableSpecs).compatible).toBe(true);
+    expect(validateConnectionItems(end, start, defaultCableSpecs).compatible).toBe(false);
   });
 });

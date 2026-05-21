@@ -8,8 +8,9 @@ import projectReducer, {
   deleteTopologyChannel,
   deleteTopologyNode,
   moveTopologyNode,
-  upsertCableBundlePreset,
+  upsertCableSpec,
   upsertConnectionPoint,
+  upsertConnectionPointPreset,
   upsertDeviceInstance,
   upsertDeviceTypePreset,
   updateTopologyChannelCategory,
@@ -154,20 +155,23 @@ describe('topology reducers', () => {
       state,
       addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
     );
-    const bundle = {
-      id: 'bundle-a',
-      name: '主线',
-      items: [
-        {
-          id: 'item-a',
-          cableSpecId: 'spec-a',
-          usage: '通信线',
-          model: 'CAT6',
-          quantity: { mode: 'fixed' as const, count: 1 },
-          diameterMm: 7.5,
-        },
-      ],
+    const spec = {
+      id: 'spec-a',
+      usage: '通信线',
+      model: 'CAT6',
+      diameterText: '约 7.5',
+      diameterMm: 7.5,
     };
+    state = projectReducer(state, upsertCableSpec(spec));
+    const items = [
+      {
+        id: 'item-a',
+        cableSpecId: spec.id,
+        quantity: { mode: 'fixed' as const, count: 1 },
+        connectionHeightMm: 1200,
+      },
+    ];
+    state = projectReducer(state, upsertConnectionPointPreset({ id: 'preset-a', name: '主线', items }));
     state = projectReducer(
       state,
       upsertDeviceTypePreset({
@@ -178,15 +182,10 @@ describe('topology reducers', () => {
           {
             id: 'port-a',
             portType: '主机到终端',
-            connectionHeightMm: 1200,
-            cableBundle: bundle,
+            items,
           },
         ],
       }),
-    );
-    state = projectReducer(
-      state,
-      upsertCableBundlePreset(bundle),
     );
     state = projectReducer(
       state,
@@ -209,10 +208,10 @@ describe('topology reducers', () => {
       upsertConnectionPoint({
         id: 'point-a',
         nodeId: 'node-a',
+        mode: 'device',
         deviceId: 'device-a',
         portType: '主机到终端',
-        connectionHeightMm: 1200,
-        cableBundle: bundle,
+        items,
       }),
     );
     state = projectReducer(
@@ -220,10 +219,10 @@ describe('topology reducers', () => {
       upsertConnectionPoint({
         id: 'point-b',
         nodeId: 'node-b',
+        mode: 'device',
         deviceId: 'device-b',
         portType: '主机到终端',
-        connectionHeightMm: 500,
-        cableBundle: bundle,
+        items,
       }),
     );
     state = projectReducer(
@@ -244,7 +243,7 @@ describe('topology reducers', () => {
           preset.ports.some((port) => port.portType === '主机到终端'),
       ),
     ).toBe(true);
-    expect(state.current.cableBundlePresets.some((preset) => preset.id === 'bundle-a')).toBe(true);
+    expect(state.current.connectionPointPresets.some((preset) => preset.id === 'preset-a')).toBe(true);
     expect(state.current.connectionPoints).toHaveLength(2);
     expect(state.current.routes).toHaveLength(1);
     expect(state.current.topology.channels[0].cableIds).toEqual(['通信线:CAT6x1']);
@@ -257,23 +256,15 @@ describe('topology reducers', () => {
       state,
       addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
     );
-    const bundle = {
-      id: 'bundle-a',
-      name: '主线',
-      items: [
-        {
-          id: 'item-a',
-          cableSpecId: 'spec-a',
-          usage: '通信线',
-          model: 'CAT6',
-          quantity: { mode: 'fixed' as const, count: 1 },
-        },
-      ],
-    };
-    state = projectReducer(
-      state,
-      upsertCableBundlePreset(bundle),
-    );
+    const items = [
+      {
+        id: 'item-a',
+        cableSpecId: 'cable-spec-VVR-0.6/1kV-2x2.5',
+        quantity: { mode: 'fixed' as const, count: 1 },
+        connectionHeightMm: 800,
+      },
+    ];
+    state = projectReducer(state, upsertConnectionPointPreset({ id: 'preset-a', name: '主线', items }));
     state = projectReducer(state, upsertDeviceInstance({ id: 'device-a', name: '主机1', deviceType: '主机' }));
     state = projectReducer(state, upsertDeviceInstance({ id: 'device-b', name: '终端1', deviceType: '终端' }));
     state = projectReducer(
@@ -281,10 +272,10 @@ describe('topology reducers', () => {
       upsertConnectionPoint({
         id: 'point-a',
         nodeId: 'node-a',
+        mode: 'device',
         deviceId: 'device-a',
         portType: '主机到终端',
-        connectionHeightMm: 800,
-        cableBundle: bundle,
+        items,
       }),
     );
     state = projectReducer(
@@ -292,10 +283,10 @@ describe('topology reducers', () => {
       upsertConnectionPoint({
         id: 'point-b',
         nodeId: 'node-b',
+        mode: 'device',
         deviceId: 'device-b',
         portType: '主机到终端',
-        connectionHeightMm: 500,
-        cableBundle: bundle,
+        items,
       }),
     );
     state = projectReducer(
@@ -316,6 +307,6 @@ describe('topology reducers', () => {
     expect(state.current.connectionPoints).toHaveLength(0);
     expect(state.current.routes).toHaveLength(0);
     expect(state.current.topology.channels[0].cableIds).toEqual([]);
-    expect(state.current.cableBundlePresets.length).toBeGreaterThan(0);
+    expect(state.current.connectionPointPresets.length).toBeGreaterThan(0);
   });
 });

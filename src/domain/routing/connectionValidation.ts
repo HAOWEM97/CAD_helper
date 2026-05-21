@@ -1,4 +1,4 @@
-import type { CableBundle, CableBundleItem, CableQuantity } from '@/domain/project/types';
+import type { CableQuantity, CableSpec, ConnectionCableItem } from '@/domain/project/types';
 
 export type ConnectionValidationResult =
   | {
@@ -10,46 +10,65 @@ export type ConnectionValidationResult =
       reason: string;
     };
 
-function itemKey(item: CableBundleItem) {
-  return `${item.usage}|${item.model}`;
+function specById(cableSpecs: CableSpec[]) {
+  return new Map(cableSpecs.map((spec) => [spec.id, spec]));
 }
 
-function quantityText(quantity: CableQuantity) {
+function itemKey(item: ConnectionCableItem, cableSpecsById: Map<string, CableSpec>) {
+  const spec = cableSpecsById.get(item.cableSpecId);
+  return `${spec?.usage ?? ''}|${spec?.model ?? item.cableSpecId}`;
+}
+
+export function quantityText(quantity: CableQuantity) {
   return quantity.mode === 'unlimited' ? '不限' : String(quantity.count);
 }
 
-export function bundleHasUnlimitedCapacity(bundle: CableBundle) {
-  return bundle.items.some((item) => item.quantity.mode === 'unlimited');
+export function connectionItemsHaveUnlimitedCapacity(items: ConnectionCableItem[]) {
+  return items.some((item) => item.quantity.mode === 'unlimited');
 }
 
-export function summarizeCableBundle(bundle: CableBundle) {
-  if (bundle.items.length === 0) {
+export function summarizeConnectionItems(items: ConnectionCableItem[], cableSpecs: CableSpec[]) {
+  if (items.length === 0) {
     return '无';
   }
 
-  return bundle.items
-    .map((item) => `${item.usage}/${item.model} x ${quantityText(item.quantity)}`)
+  const cableSpecsById = specById(cableSpecs);
+  return items
+    .map((item) => {
+      const spec = cableSpecsById.get(item.cableSpecId);
+      return `${spec?.usage ?? '未知用途'}/${spec?.model ?? '未知型号'} x ${quantityText(
+        item.quantity,
+      )} @ ${item.connectionHeightMm}mm`;
+    })
     .join('；');
 }
 
-export function cableBundleToCableIds(bundle: CableBundle) {
-  return bundle.items.map((item) => `${item.usage}:${item.model}x${quantityText(item.quantity)}`);
+export function connectionItemsToCableIds(items: ConnectionCableItem[], cableSpecs: CableSpec[]) {
+  const cableSpecsById = specById(cableSpecs);
+  return items.map((item) => {
+    const spec = cableSpecsById.get(item.cableSpecId);
+    return `${spec?.usage ?? 'unknown'}:${spec?.model ?? item.cableSpecId}x${quantityText(
+      item.quantity,
+    )}`;
+  });
 }
 
-export function validateConnectionBundles(
-  fromBundle: CableBundle,
-  toBundle: CableBundle,
+export function validateConnectionItems(
+  fromItems: ConnectionCableItem[],
+  toItems: ConnectionCableItem[],
+  cableSpecs: CableSpec[],
 ): ConnectionValidationResult {
-  if (fromBundle.items.length === 0 || toBundle.items.length === 0) {
+  if (fromItems.length === 0 || toItems.length === 0) {
     return {
       compatible: false,
-      reason: '起点或终点缺少线缆组合。',
+      reason: '起点或终点缺少接线孔线缆明细。',
     };
   }
 
-  const toItemsByKey = new Map(toBundle.items.map((item) => [itemKey(item), item]));
+  const cableSpecsById = specById(cableSpecs);
+  const toItemsByKey = new Map(toItems.map((item) => [itemKey(item, cableSpecsById), item]));
 
-  for (const fromItem of fromBundle.items) {
+  for (const fromItem of fromItems) {
     if (fromItem.quantity.mode === 'unlimited') {
       return {
         compatible: false,
@@ -57,11 +76,13 @@ export function validateConnectionBundles(
       };
     }
 
-    const toItem = toItemsByKey.get(itemKey(fromItem));
+    const fromSpec = cableSpecsById.get(fromItem.cableSpecId);
+    const fromLabel = `${fromSpec?.usage ?? '未知用途'}/${fromSpec?.model ?? fromItem.cableSpecId}`;
+    const toItem = toItemsByKey.get(itemKey(fromItem, cableSpecsById));
     if (!toItem) {
       return {
         compatible: false,
-        reason: `终点缺少 ${fromItem.usage}/${fromItem.model}。`,
+        reason: `终点缺少 ${fromLabel}。`,
       };
     }
 
@@ -72,7 +93,7 @@ export function validateConnectionBundles(
     if (toItem.quantity.count !== fromItem.quantity.count) {
       return {
         compatible: false,
-        reason: `${fromItem.usage}/${fromItem.model} 数量不一致：起点 ${fromItem.quantity.count}，终点 ${toItem.quantity.count}。`,
+        reason: `${fromLabel} 数量不一致：起点 ${fromItem.quantity.count}，终点 ${toItem.quantity.count}。`,
       };
     }
   }

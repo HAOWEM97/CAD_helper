@@ -58,28 +58,23 @@ export type CableSpec = {
   diameterMm?: number;
 };
 
-export type CableBundleItem = {
+export type ConnectionCableItem = {
   id: string;
   cableSpecId: string;
-  usage: string;
-  model: string;
   quantity: CableQuantity;
-  diameterMm?: number;
+  connectionHeightMm: number;
 };
 
-export type CableBundle = {
+export type ConnectionPointPreset = {
   id: string;
   name: string;
-  items: CableBundleItem[];
+  items: ConnectionCableItem[];
 };
-
-export type CableBundlePreset = CableBundle;
 
 export type DevicePortPreset = {
   id: string;
   portType: string;
-  connectionHeightMm: number;
-  cableBundle: CableBundle;
+  items: ConnectionCableItem[];
 };
 
 export type DeviceTypePreset = {
@@ -98,10 +93,10 @@ export type DeviceInstance = {
 export type DeviceConnectionPoint = {
   id: string;
   nodeId: string;
-  deviceId: string;
+  mode: 'device' | 'custom';
+  deviceId?: string;
   portType: string;
-  connectionHeightMm: number;
-  cableBundle: CableBundle;
+  items: ConnectionCableItem[];
 };
 
 export type CableRouteStatus = 'valid' | 'needs-recalculation';
@@ -124,7 +119,7 @@ export type Project = {
   deviceInstances: DeviceInstance[];
   connectionPoints: DeviceConnectionPoint[];
   cableSpecs: CableSpec[];
-  cableBundlePresets: CableBundlePreset[];
+  connectionPointPresets: ConnectionPointPreset[];
   deviceTypePresets: DeviceTypePreset[];
   routes: CableRoute[];
 };

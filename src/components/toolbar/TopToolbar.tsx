@@ -12,7 +12,7 @@ import {
 const workflowSteps: Array<{ id: WorkflowStep; label: string; description: string }> = [
   { id: 'calibration', label: '校准', description: '底图导入与坐标映射' },
   { id: 'drawing', label: '绘制', description: '通道拓扑网络' },
-  { id: 'devices', label: '设备', description: '设备接线孔与线缆组合' },
+  { id: 'devices', label: '设备', description: '设备接线孔与接线孔明细' },
   { id: 'routing', label: '路由', description: '线缆路径生成' },
   { id: 'quantity', label: '算量', description: '规格推演与 BOM' },
   { id: 'export', label: '导出', description: 'CAD 脚本与工程文件' },

@@ -7,16 +7,16 @@ import type {
 } from '@/domain/cad-coordinate/types';
 import type { Point2D } from '@/domain/geometry/types';
 import {
-  defaultCableBundlePresets,
   defaultCableSpecs,
+  defaultConnectionPointPresets,
   defaultDeviceTypePresets,
 } from '@/domain/library/defaultDeviceLibrary';
 import type {
-  CableBundlePreset,
   CableRoute,
   CableSpec,
   ChannelCategory,
   ChannelSegment,
+  ConnectionPointPreset,
   DeviceConnectionPoint,
   DeviceInstance,
   DeviceTypePreset,
@@ -24,7 +24,7 @@ import type {
   Project,
   TopologyNode,
 } from '@/domain/project/types';
-import { cableBundleToCableIds } from '@/domain/routing/connectionValidation';
+import { connectionItemsToCableIds } from '@/domain/routing/connectionValidation';
 
 type ProjectState = {
   current: Project;
@@ -55,7 +55,7 @@ const initialProject: Project = {
   deviceInstances: [],
   connectionPoints: [],
   cableSpecs: defaultCableSpecs,
-  cableBundlePresets: defaultCableBundlePresets,
+  connectionPointPresets: defaultConnectionPointPresets,
   deviceTypePresets: defaultDeviceTypePresets,
   routes: [],
 };
@@ -121,7 +121,7 @@ function rebuildChannelCableIdsFromRoutes(project: Project) {
 
   for (const route of project.routes) {
     const fromPoint = pointById.get(route.fromConnectionPointId);
-    const cableIds = fromPoint ? cableBundleToCableIds(fromPoint.cableBundle) : [];
+    const cableIds = fromPoint ? connectionItemsToCableIds(fromPoint.items, project.cableSpecs) : [];
     for (const channelId of route.pathSegmentIds) {
       const channelCableIds = cableIdsByChannelId.get(channelId) ?? new Set<string>();
       for (const cableId of cableIds) {
@@ -381,15 +381,17 @@ const projectSlice = createSlice({
       );
       upsertById(state.current.cableSpecs, duplicate ? { ...spec, id: duplicate.id } : spec);
     },
-    upsertCableBundlePreset(state, action: PayloadAction<CableBundlePreset>) {
-      const bundle = action.payload;
-      if (!bundle.name.trim() || bundle.items.length === 0) {
+    upsertConnectionPointPreset(state, action: PayloadAction<ConnectionPointPreset>) {
+      const preset = action.payload;
+      if (!preset.name.trim() || preset.items.length === 0) {
         return;
       }
-      const duplicate = state.current.cableBundlePresets.find((item) => item.name === bundle.name);
+      const duplicate = state.current.connectionPointPresets.find(
+        (item) => item.name === preset.name,
+      );
       upsertById(
-        state.current.cableBundlePresets,
-        duplicate ? { ...bundle, id: duplicate.id } : bundle,
+        state.current.connectionPointPresets,
+        duplicate ? { ...preset, id: duplicate.id } : preset,
       );
     },
     upsertDeviceTypePreset(state, action: PayloadAction<DeviceTypePreset>) {
@@ -415,10 +417,10 @@ const projectSlice = createSlice({
     upsertConnectionPoint(state, action: PayloadAction<DeviceConnectionPoint>) {
       const point = action.payload;
       const nodeExists = state.current.topology.nodes.some((node) => node.id === point.nodeId);
-      const deviceExists = state.current.deviceInstances.some(
-        (device) => device.id === point.deviceId,
-      );
-      if (!nodeExists || !deviceExists || !point.portType.trim() || point.cableBundle.items.length === 0) {
+      const deviceExists =
+        point.mode === 'custom' ||
+        state.current.deviceInstances.some((device) => device.id === point.deviceId);
+      if (!nodeExists || !deviceExists || !point.portType.trim() || point.items.length === 0) {
         return;
       }
 
@@ -496,9 +498,9 @@ export const {
   setCalibrationImagePoint,
   setImageMetadata,
   updateTopologyChannelCategory,
-  upsertCableBundlePreset,
   upsertCableSpec,
   upsertConnectionPoint,
+  upsertConnectionPointPreset,
   upsertDeviceInstance,
   upsertDeviceTypePreset,
 } = projectSlice.actions;
