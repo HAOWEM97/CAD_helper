@@ -436,6 +436,7 @@ const projectSlice = createSlice({
     },
     deleteConnectionPoint(state, action: PayloadAction<string>) {
       const pointId = action.payload;
+      const deletedPoint = state.current.connectionPoints.find((point) => point.id === pointId);
       state.current.connectionPoints = state.current.connectionPoints.filter(
         (point) => point.id !== pointId,
       );
@@ -443,6 +444,14 @@ const projectSlice = createSlice({
         (route) =>
           route.fromConnectionPointId !== pointId && route.toConnectionPointId !== pointId,
       );
+      if (
+        deletedPoint?.deviceId &&
+        !state.current.connectionPoints.some((point) => point.deviceId === deletedPoint.deviceId)
+      ) {
+        state.current.deviceInstances = state.current.deviceInstances.filter(
+          (device) => device.id !== deletedPoint.deviceId,
+        );
+      }
       rebuildChannelCableIdsFromRoutes(state.current);
     },
     clearConnectionPointAssignments(state) {

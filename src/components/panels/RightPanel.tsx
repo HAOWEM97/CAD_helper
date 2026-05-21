@@ -41,6 +41,7 @@ import {
   clearConnectionPointAssignments,
   createCableRoute,
   createDefaultDeviceName,
+  deleteConnectionPoint,
   setActiveCalibrationPoint,
   setCalibrationCadCoordinate,
   updateTopologyChannelCategory,
@@ -50,7 +51,11 @@ import {
   upsertDeviceInstance,
   upsertDeviceTypePreset,
 } from '@/state/slices/projectSlice';
-import { setSelectedRouteId, toggleRightPanelCollapsed } from '@/state/slices/uiSlice';
+import {
+  setSelectedRouteId,
+  setSelectedTopologyObject,
+  toggleRightPanelCollapsed,
+} from '@/state/slices/uiSlice';
 import {
   loadGlobalPresetLibrary,
   upsertGlobalCableSpec,
@@ -137,6 +142,19 @@ function connectionPointPresetFromItems(name: string, items: ConnectionCableItem
     name: name.trim(),
     items: cloneConnectionItems(items),
   };
+}
+
+const naturalCollator = new Intl.Collator('zh-CN', {
+  numeric: true,
+  sensitivity: 'base',
+});
+
+function nodeLabel(index: number) {
+  return `N${String(index + 1).padStart(3, '0')}`;
+}
+
+function compareText(a: string, b: string) {
+  return naturalCollator.compare(a, b);
 }
 
 function formatImagePoint(point: CalibrationDraftPoint['imagePoint']) {
@@ -460,8 +478,8 @@ function DeviceConnectionEditor() {
   const cableSpecs = useAppSelector(selectCableSpecs);
   const connectionPointPresets = useAppSelector(selectConnectionPointPresets);
   const projectDeviceTypePresets = useAppSelector(selectDeviceTypePresets);
-  const routes = useAppSelector(selectRoutes);
   const [globalLibrary, setGlobalLibrary] = useState(() => loadGlobalPresetLibrary());
+  const [expandedPointId, setExpandedPointId] = useState<string | null>(null);
   const allDeviceTypePresets = useMemo(
     () => [...projectDeviceTypePresets, ...globalLibrary.deviceTypePresets],
     [globalLibrary.deviceTypePresets, projectDeviceTypePresets],
@@ -501,6 +519,43 @@ function DeviceConnectionEditor() {
       : allDeviceTypePresets.find((preset) => preset.deviceType === source) ?? null;
   const editable = source === 'custom';
   const availableDevices = deviceInstances.filter((device) => device.deviceType === source);
+  const nodeLabelById = useMemo(
+    () => new Map(topology.nodes.map((topologyNode, index) => [topologyNode.id, nodeLabel(index)])),
+    [topology.nodes],
+  );
+  const deviceById = useMemo(
+    () => new Map(deviceInstances.map((device) => [device.id, device])),
+    [deviceInstances],
+  );
+  const sortedConnectionPoints = useMemo(
+    () =>
+      connectionPoints
+        .map((point) => {
+          const device = point.deviceId ? deviceById.get(point.deviceId) : null;
+          return {
+            point,
+            deviceName: point.mode === 'custom' ? '自定义' : device?.name ?? '未知设备',
+            deviceType: point.mode === 'custom' ? '自定义接线孔' : device?.deviceType ?? '未知类型',
+            nodeLabel: nodeLabelById.get(point.nodeId) ?? 'N---',
+          };
+        })
+        .sort((a, b) => {
+          const typeCompare = compareText(a.deviceType, b.deviceType);
+          if (typeCompare !== 0) {
+            return typeCompare;
+          }
+          const nameCompare = compareText(a.deviceName, b.deviceName);
+          if (nameCompare !== 0) {
+            return nameCompare;
+          }
+          const portCompare = compareText(a.point.portType, b.point.portType);
+          if (portCompare !== 0) {
+            return portCompare;
+          }
+          return compareText(a.nodeLabel, b.nodeLabel);
+        }),
+    [connectionPoints, deviceById, nodeLabelById],
+  );
   const canSave =
     portType.trim() !== '' &&
     items.length > 0 &&
@@ -627,32 +682,22 @@ function DeviceConnectionEditor() {
           <>
             <label>
               <span>设备实例</span>
-              <select
-                onChange={(event) => {
-                  const nextDeviceId = event.target.value;
-                  setDeviceId(nextDeviceId);
-                  const nextDevice = deviceInstances.find((device) => device.id === nextDeviceId);
-                  setDeviceName(
-                    nextDevice?.name ?? createDefaultDeviceName(deviceInstances, source),
-                  );
-                }}
-                value={deviceId}
-              >
-                <option value="">新建设备</option>
-                {availableDevices.map((device) => (
-                  <option key={device.id} value={device.id}>
-                    {device.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>设备名称</span>
               <input
-                onChange={(event) => setDeviceName(event.target.value)}
+                list="device-instance-options"
+                onChange={(event) => {
+                  const nextName = event.target.value;
+                  const nextDevice = availableDevices.find((device) => device.name === nextName);
+                  setDeviceName(nextName);
+                  setDeviceId(nextDevice?.id ?? '');
+                }}
                 placeholder={createDefaultDeviceName(deviceInstances, source)}
                 value={deviceName}
               />
+              <datalist id="device-instance-options">
+                {availableDevices.map((device) => (
+                  <option key={device.id} value={device.name} />
+                ))}
+              </datalist>
             </label>
             <label>
               <span>接线孔类型</span>
@@ -871,23 +916,73 @@ function DeviceConnectionEditor() {
             <p>选择节点并保存设备接线孔后，这里会列出核对清单。</p>
           </div>
         ) : (
-          connectionPoints.map((point) => {
-            const routeStatus = routes.some((route) => route.fromConnectionPointId === point.id)
-              ? '已路由'
-              : routes.some((route) => route.toConnectionPointId === point.id)
-                ? '作为终点'
-                : connectionItemsHaveUnlimitedCapacity(point.items)
-                  ? '承接端'
-                  : '待路由';
-            return (
-              <div className="connection-row" key={point.id}>
-                <strong>{connectionLabel(point, deviceInstances)}</strong>
-                <span>{point.items.length} 种线缆</span>
-                <small>{summarizeConnectionItems(point.items, allCableSpecs)}</small>
-                <em>{routeStatus}</em>
-              </div>
-            );
-          })
+          <div className="connection-audit-table">
+            <div className="connection-audit-head">
+              <span>节点</span>
+              <span>设备</span>
+              <span>接线孔</span>
+              <span />
+            </div>
+            {sortedConnectionPoints.map(({ deviceName, deviceType, nodeLabel: label, point }, index) => {
+              const previous = sortedConnectionPoints[index - 1];
+              const showGroup = !previous || previous.deviceType !== deviceType;
+              const expanded = expandedPointId === point.id;
+              const selected =
+                selectedObject?.type === 'node' && selectedObject.id === point.nodeId;
+              return (
+                <div className="connection-audit-entry" key={point.id}>
+                  {showGroup && <div className="connection-audit-group">{deviceType}</div>}
+                  <div
+                    className={selected ? 'connection-audit-row selected' : 'connection-audit-row'}
+                    onClick={() => {
+                      dispatch(setSelectedTopologyObject({ type: 'node', id: point.nodeId }));
+                      setExpandedPointId((current) => (current === point.id ? null : point.id));
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        dispatch(setSelectedTopologyObject({ type: 'node', id: point.nodeId }));
+                        setExpandedPointId((current) => (current === point.id ? null : point.id));
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <strong>{label}</strong>
+                    <span>{deviceName}</span>
+                    <span>{point.portType}</span>
+                    <button
+                      aria-label={`删除 ${label} 的接线孔属性`}
+                      className="icon-button danger-icon"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (
+                          window.confirm(
+                            '确定删除这个节点的接线孔属性吗？拓扑节点和通道不会删除。',
+                          )
+                        ) {
+                          dispatch(deleteConnectionPoint(point.id));
+                          if (selectedObject?.type === 'node' && selectedObject.id === point.nodeId) {
+                            dispatch(setSelectedTopologyObject(null));
+                          }
+                          setExpandedPointId((current) => (current === point.id ? null : current));
+                        }
+                      }}
+                      title="删除接线孔属性"
+                      type="button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  {expanded && (
+                    <div className="connection-audit-detail">
+                      <CableItemsTable cableSpecs={allCableSpecs} editable={false} items={point.items} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

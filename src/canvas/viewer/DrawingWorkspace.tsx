@@ -62,6 +62,7 @@ type OverlayPoint = {
 
 type OverlayNodePosition = OverlayPoint & {
   id: string;
+  label: string;
 };
 
 type OverlayChannelPosition = {
@@ -231,10 +232,14 @@ export function DrawingWorkspace() {
     const nextNodes: OverlayNodePosition[] = [];
     const nextChannels: OverlayChannelPosition[] = [];
 
-    for (const node of activeTopology.nodes) {
+    for (const [index, node] of activeTopology.nodes.entries()) {
       const viewerPoint = cadToViewerElementPoint(node.position);
       if (viewerPoint) {
-        nextNodes.push({ id: node.id, ...viewerPoint });
+        nextNodes.push({
+          id: node.id,
+          label: `N${String(index + 1).padStart(3, '0')}`,
+          ...viewerPoint,
+        });
       }
     }
 
@@ -993,6 +998,11 @@ export function DrawingWorkspace() {
                 transform={`translate(${node.left} ${node.top})`}
               >
                 <circle r="6" />
+                {selectedTopologyObject?.type === 'node' && selectedTopologyObject.id === node.id && (
+                  <text className="topology-node-label" x="10" y="-10">
+                    {node.label}
+                  </text>
+                )}
               </g>
             ))}
           </svg>

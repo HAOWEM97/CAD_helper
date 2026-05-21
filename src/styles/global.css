@@ -502,6 +502,17 @@ button {
   stroke-width: 4;
 }
 
+.topology-node-label {
+  paint-order: stroke;
+  fill: #ffffff;
+  stroke: rgb(23 33 26 / 78%);
+  stroke-width: 4px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
 .calibration-marker {
   position: absolute;
   width: 18px;
@@ -948,6 +959,76 @@ button {
   color: var(--accent-strong);
   font-style: normal;
   font-weight: 800;
+}
+
+.connection-audit-table {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.connection-audit-head,
+.connection-audit-row {
+  display: grid;
+  grid-template-columns: 48px minmax(72px, 0.9fr) minmax(84px, 1fr) 30px;
+  gap: 6px;
+  align-items: center;
+}
+
+.connection-audit-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.connection-audit-entry {
+  display: grid;
+  gap: 6px;
+}
+
+.connection-audit-group {
+  margin-top: 4px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.connection-audit-row {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.connection-audit-row.selected {
+  border-color: var(--accent);
+  background: #eef8f3;
+  box-shadow: 0 0 0 2px rgb(29 111 95 / 12%);
+}
+
+.connection-audit-row strong {
+  color: var(--accent-strong);
+  font-size: 12px;
+}
+
+.connection-audit-row span {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-audit-detail {
+  margin-left: 8px;
+  border-left: 2px solid var(--accent-soft);
+  padding-left: 8px;
 }
 
 .route-list {

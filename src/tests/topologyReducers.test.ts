@@ -5,6 +5,7 @@ import projectReducer, {
   clearConnectionPointAssignments,
   createCableRoute,
   createDefaultDeviceName,
+  deleteConnectionPoint,
   deleteTopologyChannel,
   deleteTopologyNode,
   moveTopologyNode,
@@ -308,5 +309,71 @@ describe('topology reducers', () => {
     expect(state.current.routes).toHaveLength(0);
     expect(state.current.topology.channels[0].cableIds).toEqual([]);
     expect(state.current.connectionPointPresets.length).toBeGreaterThan(0);
+  });
+
+  it('deletes one connection point, related routes, channel cables and empty device instance', () => {
+    let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
+    state = projectReducer(
+      state,
+      addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
+    );
+    const spec = {
+      id: 'spec-a',
+      usage: '通信线',
+      model: 'CAT6',
+      diameterText: '约 7.5',
+    };
+    state = projectReducer(state, upsertCableSpec(spec));
+    const items = [
+      {
+        id: 'item-a',
+        cableSpecId: spec.id,
+        quantity: { mode: 'fixed' as const, count: 1 },
+        connectionHeightMm: 800,
+      },
+    ];
+    state = projectReducer(state, upsertDeviceInstance({ id: 'device-a', name: '主机1', deviceType: '主机' }));
+    state = projectReducer(state, upsertDeviceInstance({ id: 'device-b', name: '终端1', deviceType: '终端' }));
+    state = projectReducer(
+      state,
+      upsertConnectionPoint({
+        id: 'point-a',
+        nodeId: 'node-a',
+        mode: 'device',
+        deviceId: 'device-a',
+        portType: '主机到终端',
+        items,
+      }),
+    );
+    state = projectReducer(
+      state,
+      upsertConnectionPoint({
+        id: 'point-b',
+        nodeId: 'node-b',
+        mode: 'device',
+        deviceId: 'device-b',
+        portType: '主机到终端',
+        items,
+      }),
+    );
+    state = projectReducer(
+      state,
+      createCableRoute({
+        id: 'route-a',
+        fromConnectionPointId: 'point-a',
+        toConnectionPointId: 'point-b',
+        pathSegmentIds: ['channel-a'],
+        status: 'valid',
+      }),
+    );
+
+    state = projectReducer(state, deleteConnectionPoint('point-a'));
+
+    expect(state.current.connectionPoints.map((point) => point.id)).toEqual(['point-b']);
+    expect(state.current.deviceInstances.map((device) => device.id)).toEqual(['device-b']);
+    expect(state.current.routes).toHaveLength(0);
+    expect(state.current.topology.channels[0].cableIds).toEqual([]);
+    expect(state.current.topology.nodes).toHaveLength(2);
   });
 });
