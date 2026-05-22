@@ -1,4 +1,6 @@
+import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '@/app/store';
+import { buildBomSummary, inferChannelSpecs } from '@/domain/quantity/bom';
 
 export const selectProject = (state: RootState) => state.project.current;
 export const selectProjectImage = (state: RootState) => state.project.current.image;
@@ -13,3 +15,5 @@ export const selectConnectionPointPresets = (state: RootState) =>
 export const selectDeviceTypePresets = (state: RootState) =>
   state.project.current.deviceTypePresets;
 export const selectRoutes = (state: RootState) => state.project.current.routes;
+export const selectInferredChannelSpecs = createSelector(selectProject, inferChannelSpecs);
+export const selectBomSummary = createSelector(selectProject, buildBomSummary);

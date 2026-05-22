@@ -196,6 +196,60 @@ function upsertById<T extends { id: string }>(items: T[], nextItem: T) {
   }
 }
 
+function cloneConnectionItems<T extends { id: string }>(items: T[]): T[] {
+  return items.map((item) => ({ ...item }));
+}
+
+function cableSpecIsReferenced(project: Project, cableSpecId: string) {
+  const connectionPointUsesSpec = project.connectionPoints.some((point) =>
+    point.items.some((item) => item.cableSpecId === cableSpecId),
+  );
+  const connectionPresetUsesSpec = project.connectionPointPresets.some((preset) =>
+    preset.items.some((item) => item.cableSpecId === cableSpecId),
+  );
+  const deviceTypeUsesSpec = project.deviceTypePresets.some((preset) =>
+    preset.ports.some((port) => port.items.some((item) => item.cableSpecId === cableSpecId)),
+  );
+
+  return connectionPointUsesSpec || connectionPresetUsesSpec || deviceTypeUsesSpec;
+}
+
+function markRoutesUsingConnectionPointForRecalculation(project: Project, pointId: string) {
+  project.routes = project.routes.map((route) =>
+    route.fromConnectionPointId === pointId || route.toConnectionPointId === pointId
+      ? { ...route, status: 'needs-recalculation' }
+      : route,
+  );
+}
+
+export function createDefaultCustomConnectionPointName(
+  connectionPoints: DeviceConnectionPoint[],
+  portType: string,
+  excludePointId?: string,
+) {
+  const trimmedPortType = portType.trim() || '自定义接线孔';
+  const usedNumbers = new Set<number>();
+
+  for (const point of connectionPoints) {
+    if (point.id === excludePointId) {
+      continue;
+    }
+
+    const name = point.customInstanceName ?? '';
+    const number = extractTypeNumber(name, trimmedPortType);
+    if (number !== null) {
+      usedNumbers.add(number);
+    }
+  }
+
+  let nextNumber = 1;
+  while (usedNumbers.has(nextNumber)) {
+    nextNumber += 1;
+  }
+
+  return `${trimmedPortType}${nextNumber}`;
+}
+
 const projectSlice = createSlice({
   name: 'project',
   initialState,
@@ -371,15 +425,46 @@ const projectSlice = createSlice({
 
       markRoutesUsingChannelsForRecalculation(state.current, updatedChannelIds);
     },
+    updateTopologyChannelDepth(
+      state,
+      action: PayloadAction<{ channelId: string; depthMm: number | null }>,
+    ) {
+      const channel = state.current.topology.channels.find(
+        (item) => item.id === action.payload.channelId,
+      );
+      if (!channel) {
+        return;
+      }
+
+      if (action.payload.depthMm === null) {
+        delete channel.depthMm;
+        return;
+      }
+
+      channel.depthMm = Math.max(0, action.payload.depthMm);
+    },
     upsertCableSpec(state, action: PayloadAction<CableSpec>) {
       const spec = action.payload;
-      if (!spec.usage.trim() || !spec.model.trim()) {
+      const model = spec.model.trim();
+      if (!model) {
         return;
       }
       const duplicate = state.current.cableSpecs.find(
-        (item) => item.usage === spec.usage && item.model === spec.model,
+        (item) => item.id !== spec.id && item.model.trim() === model,
       );
-      upsertById(state.current.cableSpecs, duplicate ? { ...spec, id: duplicate.id } : spec);
+      if (duplicate) {
+        return;
+      }
+      upsertById(state.current.cableSpecs, { ...spec, model });
+    },
+    deleteCableSpec(state, action: PayloadAction<string>) {
+      if (cableSpecIsReferenced(state.current, action.payload)) {
+        return;
+      }
+
+      state.current.cableSpecs = state.current.cableSpecs.filter(
+        (spec) => spec.id !== action.payload,
+      );
     },
     upsertConnectionPointPreset(state, action: PayloadAction<ConnectionPointPreset>) {
       const preset = action.payload;
@@ -394,6 +479,66 @@ const projectSlice = createSlice({
         duplicate ? { ...preset, id: duplicate.id } : preset,
       );
     },
+    upsertConnectionPointPresetWithSync(
+      state,
+      action: PayloadAction<{ preset: ConnectionPointPreset; syncToProject: boolean }>,
+    ) {
+      const { preset, syncToProject } = action.payload;
+      if (!preset.name.trim() || preset.items.length === 0) {
+        return;
+      }
+
+      const existing = state.current.connectionPointPresets.find(
+        (item) => item.id === preset.id || item.name === preset.name,
+      );
+      const nextPreset = existing ? { ...preset, id: existing.id } : preset;
+      const previousName = existing?.name ?? preset.name;
+      upsertById(state.current.connectionPointPresets, nextPreset);
+
+      for (const point of state.current.connectionPoints) {
+        const isBound =
+          point.presetRef?.kind === 'custom' && point.presetRef.id === nextPreset.id;
+        const isLegacyNameMatch =
+          !point.presetRef && point.mode === 'custom' && point.portType === previousName;
+        if (!isBound && !isLegacyNameMatch) {
+          continue;
+        }
+
+        if (syncToProject) {
+          point.portType = nextPreset.name;
+          point.items = cloneConnectionItems(nextPreset.items);
+          point.presetRef = { kind: 'custom', id: nextPreset.id };
+          if (!point.customInstanceName?.trim()) {
+            point.customInstanceName = createDefaultCustomConnectionPointName(
+              state.current.connectionPoints,
+              nextPreset.name,
+              point.id,
+            );
+          }
+          markRoutesUsingConnectionPointForRecalculation(state.current, point.id);
+        } else if (isBound) {
+          delete point.presetRef;
+        }
+      }
+      rebuildChannelCableIdsFromRoutes(state.current);
+    },
+    deleteConnectionPointPreset(state, action: PayloadAction<string>) {
+      const preset = state.current.connectionPointPresets.find((item) => item.id === action.payload);
+      if (!preset) {
+        return;
+      }
+
+      const referenced = state.current.connectionPoints.some(
+        (point) => point.presetRef?.kind === 'custom' && point.presetRef.id === preset.id,
+      );
+      if (referenced) {
+        return;
+      }
+
+      state.current.connectionPointPresets = state.current.connectionPointPresets.filter(
+        (item) => item.id !== preset.id,
+      );
+    },
     upsertDeviceTypePreset(state, action: PayloadAction<DeviceTypePreset>) {
       const preset = action.payload;
       if (!preset.deviceType.trim() || preset.ports.length === 0) {
@@ -405,6 +550,73 @@ const projectSlice = createSlice({
       upsertById(
         state.current.deviceTypePresets,
         duplicate ? { ...preset, id: duplicate.id } : preset,
+      );
+    },
+    upsertDeviceTypePresetWithSync(
+      state,
+      action: PayloadAction<{ preset: DeviceTypePreset; syncToProject: boolean }>,
+    ) {
+      const { preset, syncToProject } = action.payload;
+      if (!preset.deviceType.trim() || preset.ports.length === 0) {
+        return;
+      }
+
+      const existing = state.current.deviceTypePresets.find(
+        (item) => item.id === preset.id || item.deviceType === preset.deviceType,
+      );
+      const nextPreset = existing ? { ...preset, id: existing.id } : preset;
+      const previousPortsById = new Map(
+        existing?.ports.map((port) => [port.id, port.portType]) ?? [],
+      );
+      const nextPortById = new Map(nextPreset.ports.map((port) => [port.id, port]));
+      upsertById(state.current.deviceTypePresets, nextPreset);
+
+      for (const point of state.current.connectionPoints) {
+        if (point.mode !== 'device') {
+          continue;
+        }
+
+        const boundPort =
+          point.presetRef?.kind === 'device-port'
+            ? nextPortById.get(point.presetRef.id)
+            : nextPreset.ports.find(
+                (port) =>
+                  port.portType === point.portType ||
+                  previousPortsById.get(port.id) === point.portType,
+              );
+
+        if (!boundPort) {
+          continue;
+        }
+
+        if (syncToProject) {
+          point.portType = boundPort.portType;
+          point.items = cloneConnectionItems(boundPort.items);
+          point.presetRef = { kind: 'device-port', id: boundPort.id };
+          markRoutesUsingConnectionPointForRecalculation(state.current, point.id);
+        } else if (point.presetRef?.kind === 'device-port') {
+          delete point.presetRef;
+        }
+      }
+      rebuildChannelCableIdsFromRoutes(state.current);
+    },
+    deleteDeviceTypePreset(state, action: PayloadAction<string>) {
+      const preset = state.current.deviceTypePresets.find((item) => item.id === action.payload);
+      if (!preset) {
+        return;
+      }
+
+      const portIds = new Set(preset.ports.map((port) => port.id));
+      const referenced = state.current.connectionPoints.some(
+        (point) =>
+          point.presetRef?.kind === 'device-port' && portIds.has(point.presetRef.id),
+      );
+      if (referenced) {
+        return;
+      }
+
+      state.current.deviceTypePresets = state.current.deviceTypePresets.filter(
+        (item) => item.id !== preset.id,
       );
     },
     upsertDeviceInstance(state, action: PayloadAction<DeviceInstance>) {
@@ -496,7 +708,10 @@ export const {
   clearConnectionPointAssignments,
   createCableRoute,
   deleteCableRoute,
+  deleteCableSpec,
   deleteConnectionPoint,
+  deleteConnectionPointPreset,
+  deleteDeviceTypePreset,
   deleteTopologyChannel,
   deleteTopologyNode,
   moveTopologyNode,
@@ -507,10 +722,13 @@ export const {
   setCalibrationImagePoint,
   setImageMetadata,
   updateTopologyChannelCategory,
+  updateTopologyChannelDepth,
   upsertCableSpec,
   upsertConnectionPoint,
   upsertConnectionPointPreset,
+  upsertConnectionPointPresetWithSync,
   upsertDeviceInstance,
   upsertDeviceTypePreset,
+  upsertDeviceTypePresetWithSync,
 } = projectSlice.actions;
 export default projectSlice.reducer;

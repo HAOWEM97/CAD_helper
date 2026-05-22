@@ -83,6 +83,7 @@ function connectionItemFromRow(row: SourceRow): ConnectionCableItem {
   return {
     id: `connection-cable-${row.deviceType}-${row.portType}-${row.usage}-${row.model}`.replace(/\s+/g, '-'),
     cableSpecId: specId(row.model),
+    usage: row.usage,
     quantity: parseCableQuantity(row.quantityText),
     connectionHeightMm: row.heightMm,
   };
@@ -96,7 +97,6 @@ export const defaultCableSpecs: CableSpec[] = Array.from(
         specId(row.model),
         {
           id: specId(row.model),
-          usage: row.usage,
           model: row.model,
           diameterText: row.diameterText,
           ...diameter,
@@ -113,6 +113,7 @@ function buildConnectionPointPreset(
 ): ConnectionPointPreset {
   return {
     id: `connection-point-preset-${deviceType}-${portType}`.replace(/\s+/g, '-'),
+    kind: 'device-port',
     name: portType,
     items: rows.map(connectionItemFromRow),
   };

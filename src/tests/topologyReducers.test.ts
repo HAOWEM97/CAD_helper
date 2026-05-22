@@ -5,16 +5,20 @@ import projectReducer, {
   clearConnectionPointAssignments,
   createCableRoute,
   createDefaultDeviceName,
+  deleteCableSpec,
   deleteConnectionPoint,
+  deleteConnectionPointPreset,
   deleteTopologyChannel,
   deleteTopologyNode,
   moveTopologyNode,
   upsertCableSpec,
   upsertConnectionPoint,
   upsertConnectionPointPreset,
+  upsertConnectionPointPresetWithSync,
   upsertDeviceInstance,
   upsertDeviceTypePreset,
   updateTopologyChannelCategory,
+  updateTopologyChannelDepth,
 } from '@/state/slices/projectSlice';
 
 describe('topology reducers', () => {
@@ -107,6 +111,130 @@ describe('topology reducers', () => {
     ]);
   });
 
+  it('stores editable channel depth after quantity spec inference unlocks the field', () => {
+    let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
+    state = projectReducer(
+      state,
+      addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
+    );
+    state = projectReducer(
+      state,
+      updateTopologyChannelDepth({ channelId: 'channel-a', depthMm: 450 }),
+    );
+
+    expect(state.current.topology.channels[0].depthMm).toBe(450);
+
+    state = projectReducer(
+      state,
+      updateTopologyChannelDepth({ channelId: 'channel-a', depthMm: null }),
+    );
+
+    expect(state.current.topology.channels[0].depthMm).toBeUndefined();
+  });
+
+  it('keeps cable models unique and blocks deleting referenced cables', () => {
+    let state = projectReducer(
+      undefined,
+      upsertCableSpec({ id: 'spec-cat6', model: 'CAT6', diameterText: '约 7.5' }),
+    );
+    state = projectReducer(
+      state,
+      upsertCableSpec({ id: 'spec-cat6-copy', model: 'CAT6', diameterText: '约 8.0' }),
+    );
+
+    expect(state.current.cableSpecs.filter((spec) => spec.model === 'CAT6')).toHaveLength(1);
+
+    state = projectReducer(state, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    state = projectReducer(state, upsertDeviceInstance({ id: 'device-a', name: '主机1', deviceType: '主机' }));
+    state = projectReducer(
+      state,
+      upsertConnectionPoint({
+        id: 'point-a',
+        nodeId: 'node-a',
+        mode: 'device',
+        deviceId: 'device-a',
+        portType: '主机到终端',
+        items: [
+          {
+            id: 'item-a',
+            cableSpecId: 'spec-cat6',
+            quantity: { mode: 'fixed', count: 1 },
+            connectionHeightMm: 800,
+          },
+        ],
+      }),
+    );
+    state = projectReducer(state, deleteCableSpec('spec-cat6'));
+
+    expect(state.current.cableSpecs.some((spec) => spec.id === 'spec-cat6')).toBe(true);
+  });
+
+  it('syncs or detaches custom connection point preset updates', () => {
+    let state = projectReducer(
+      undefined,
+      upsertCableSpec({ id: 'spec-cat6', model: 'CAT6', diameterText: '约 7.5' }),
+    );
+    state = projectReducer(state, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    const initialItems = [
+      {
+        id: 'item-a',
+        cableSpecId: 'spec-cat6',
+        usage: '通信线',
+        quantity: { mode: 'fixed' as const, count: 1 },
+        connectionHeightMm: 800,
+      },
+    ];
+    state = projectReducer(
+      state,
+      upsertConnectionPointPreset({
+        id: 'preset-a',
+        kind: 'custom',
+        name: '摄像机孔',
+        items: initialItems,
+      }),
+    );
+    state = projectReducer(
+      state,
+      upsertConnectionPoint({
+        id: 'point-a',
+        nodeId: 'node-a',
+        mode: 'custom',
+        customInstanceName: '摄像机孔1',
+        portType: '摄像机孔',
+        items: initialItems,
+        presetRef: { kind: 'custom', id: 'preset-a' },
+      }),
+    );
+
+    const changedItems = [{ ...initialItems[0], usage: '备用', connectionHeightMm: 1200 }];
+    state = projectReducer(
+      state,
+      upsertConnectionPointPresetWithSync({
+        preset: { id: 'preset-a', kind: 'custom', name: '摄像机孔', items: changedItems },
+        syncToProject: true,
+      }),
+    );
+
+    expect(state.current.connectionPoints[0].items[0].connectionHeightMm).toBe(1200);
+    expect(state.current.connectionPoints[0].presetRef).toEqual({ kind: 'custom', id: 'preset-a' });
+
+    state = projectReducer(
+      state,
+      upsertConnectionPointPresetWithSync({
+        preset: { id: 'preset-a', kind: 'custom', name: '摄像机孔', items: initialItems },
+        syncToProject: false,
+      }),
+    );
+
+    expect(state.current.connectionPoints[0].items[0].connectionHeightMm).toBe(1200);
+    expect(state.current.connectionPoints[0].presetRef).toBeUndefined();
+    state = projectReducer(state, deleteConnectionPointPreset('preset-a'));
+    expect(state.current.connectionPointPresets.some((preset) => preset.id === 'preset-a')).toBe(
+      false,
+    );
+  });
+
   it('deletes a node and all connected channels', () => {
     let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
     state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
@@ -158,7 +286,6 @@ describe('topology reducers', () => {
     );
     const spec = {
       id: 'spec-a',
-      usage: '通信线',
       model: 'CAT6',
       diameterText: '约 7.5',
       diameterMm: 7.5,
@@ -247,7 +374,7 @@ describe('topology reducers', () => {
     expect(state.current.connectionPointPresets.some((preset) => preset.id === 'preset-a')).toBe(true);
     expect(state.current.connectionPoints).toHaveLength(2);
     expect(state.current.routes).toHaveLength(1);
-    expect(state.current.topology.channels[0].cableIds).toEqual(['通信线:CAT6x1']);
+    expect(state.current.topology.channels[0].cableIds).toEqual(['CAT6x1']);
   });
 
   it('clears all node connection point assignments without removing topology or presets', () => {
@@ -320,7 +447,6 @@ describe('topology reducers', () => {
     );
     const spec = {
       id: 'spec-a',
-      usage: '通信线',
       model: 'CAT6',
       diameterText: '约 7.5',
     };

@@ -4,8 +4,9 @@ import type {
   DeviceTypePreset,
 } from '@/domain/project/types';
 
-const GLOBAL_PRESET_VERSION = 3;
-const GLOBAL_PRESET_STORAGE_KEY = 'cad-router-web:global-presets:v3';
+const GLOBAL_PRESET_VERSION = 4;
+const GLOBAL_PRESET_STORAGE_KEY = 'cad-router-web:global-presets:v4';
+const LEGACY_GLOBAL_PRESET_STORAGE_KEYS = ['cad-router-web:global-presets:v3'];
 
 export type GlobalPresetLibrary = {
   version: typeof GLOBAL_PRESET_VERSION;
@@ -14,6 +15,15 @@ export type GlobalPresetLibrary = {
   deviceTypePresets: DeviceTypePreset[];
   updatedAt: string;
 };
+
+function normalizeCableSpec(spec: CableSpec & { usage?: string }): CableSpec {
+  const { usage: _usage, ...nextSpec } = spec;
+  return nextSpec;
+}
+
+function normalizeConnectionItems<T extends { items: Array<{ usage?: string }> }>(item: T): T {
+  return item;
+}
 
 function storageIsAvailable() {
   if (typeof window === 'undefined') {
@@ -61,23 +71,34 @@ export function loadGlobalPresetLibrary(): GlobalPresetLibrary {
   }
 
   try {
-    const raw = window.localStorage.getItem(GLOBAL_PRESET_STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(GLOBAL_PRESET_STORAGE_KEY) ??
+      LEGACY_GLOBAL_PRESET_STORAGE_KEYS.map((key) => window.localStorage.getItem(key)).find(
+        Boolean,
+      );
     if (!raw) {
       return emptyLibrary();
     }
 
     const parsed = JSON.parse(raw) as Partial<GlobalPresetLibrary>;
-    if (parsed.version !== GLOBAL_PRESET_VERSION) {
+    if (parsed.version !== GLOBAL_PRESET_VERSION && parsed.version !== 3) {
       return emptyLibrary();
     }
 
     return {
       version: GLOBAL_PRESET_VERSION,
-      cableSpecs: Array.isArray(parsed.cableSpecs) ? parsed.cableSpecs : [],
-      connectionPointPresets: Array.isArray(parsed.connectionPointPresets)
-        ? parsed.connectionPointPresets
+      cableSpecs: Array.isArray(parsed.cableSpecs)
+        ? parsed.cableSpecs.map((spec) => normalizeCableSpec(spec as CableSpec & { usage?: string }))
         : [],
-      deviceTypePresets: Array.isArray(parsed.deviceTypePresets) ? parsed.deviceTypePresets : [],
+      connectionPointPresets: Array.isArray(parsed.connectionPointPresets)
+        ? parsed.connectionPointPresets.map(normalizeConnectionItems)
+        : [],
+      deviceTypePresets: Array.isArray(parsed.deviceTypePresets)
+        ? parsed.deviceTypePresets.map((preset) => ({
+            ...preset,
+            ports: preset.ports.map(normalizeConnectionItems),
+          }))
+        : [],
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
     };
   } catch {
@@ -88,13 +109,20 @@ export function loadGlobalPresetLibrary(): GlobalPresetLibrary {
 export function upsertGlobalCableSpec(spec: CableSpec) {
   const library = loadGlobalPresetLibrary();
   const nextSpecs = [
-    ...library.cableSpecs.filter(
-      (item) => !(item.usage === spec.usage && item.model === spec.model),
-    ),
+    ...library.cableSpecs.filter((item) => item.model !== spec.model),
     spec,
   ];
   saveGlobalPresetLibrary({
     cableSpecs: nextSpecs,
+    connectionPointPresets: library.connectionPointPresets,
+    deviceTypePresets: library.deviceTypePresets,
+  });
+}
+
+export function deleteGlobalCableSpec(specId: string) {
+  const library = loadGlobalPresetLibrary();
+  saveGlobalPresetLibrary({
+    cableSpecs: library.cableSpecs.filter((spec) => spec.id !== specId),
     connectionPointPresets: library.connectionPointPresets,
     deviceTypePresets: library.deviceTypePresets,
   });
@@ -113,6 +141,17 @@ export function upsertGlobalConnectionPointPreset(preset: ConnectionPointPreset)
   });
 }
 
+export function deleteGlobalConnectionPointPreset(presetId: string) {
+  const library = loadGlobalPresetLibrary();
+  saveGlobalPresetLibrary({
+    cableSpecs: library.cableSpecs,
+    connectionPointPresets: library.connectionPointPresets.filter(
+      (preset) => preset.id !== presetId,
+    ),
+    deviceTypePresets: library.deviceTypePresets,
+  });
+}
+
 export function upsertGlobalDeviceTypePreset(preset: DeviceTypePreset) {
   const library = loadGlobalPresetLibrary();
   const nextPresets = [
@@ -123,5 +162,14 @@ export function upsertGlobalDeviceTypePreset(preset: DeviceTypePreset) {
     cableSpecs: library.cableSpecs,
     connectionPointPresets: library.connectionPointPresets,
     deviceTypePresets: nextPresets,
+  });
+}
+
+export function deleteGlobalDeviceTypePreset(presetId: string) {
+  const library = loadGlobalPresetLibrary();
+  saveGlobalPresetLibrary({
+    cableSpecs: library.cableSpecs,
+    connectionPointPresets: library.connectionPointPresets,
+    deviceTypePresets: library.deviceTypePresets.filter((preset) => preset.id !== presetId),
   });
 }

@@ -27,7 +27,6 @@ describe('global preset library', () => {
 
     upsertGlobalCableSpec({
       id: 'spec-a',
-      usage: '通信线',
       model: 'CAT6',
       diameterText: '约 7.5',
       diameterMm: 7.5,
@@ -39,6 +38,7 @@ describe('global preset library', () => {
         {
           id: 'item-a',
           cableSpecId: 'spec-a',
+          usage: '通信线',
           quantity: { mode: 'fixed', count: 1 },
           connectionHeightMm: 800,
         },
@@ -55,7 +55,6 @@ describe('global preset library', () => {
     expect(library.cableSpecs).toEqual([
       {
         id: 'spec-a',
-        usage: '通信线',
         model: 'CAT6',
         diameterText: '约 7.5',
         diameterMm: 7.5,

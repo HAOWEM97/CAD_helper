@@ -17,12 +17,20 @@ const workflowSteps = new Set<WorkflowStep>([
   'calibration',
   'drawing',
   'devices',
+  'library',
   'routing',
   'quantity',
   'export',
 ]);
 
 const topologyToolModes = new Set<TopologyToolMode>(['draw', 'select']);
+
+const defaultConnectionItemById = new Map(
+  [
+    ...defaultConnectionPointPresets.flatMap((preset) => preset.items),
+    ...defaultDeviceTypePresets.flatMap((preset) => preset.ports.flatMap((port) => port.items)),
+  ].map((item) => [item.id, item]),
+);
 
 export type PersistedUiState = Pick<
   UiState,
@@ -44,6 +52,7 @@ export type PersistedDraft = {
 
 function normalizeProject(project: Project): Project {
   const legacyProject = project as Project & {
+    cableSpecs?: Array<Project['cableSpecs'][number] & { usage?: string }>;
     cableBundlePresets?: Array<{
       id: string;
       name: string;
@@ -73,8 +82,23 @@ function normalizeProject(project: Project): Project {
       };
     }>;
   };
-  const cableSpecs = project.cableSpecs?.length ? project.cableSpecs : defaultCableSpecs;
+  const rawCableSpecs = project.cableSpecs?.length ? project.cableSpecs : defaultCableSpecs;
+  const cableSpecs = rawCableSpecs.map((spec) => {
+    const { usage: _usage, ...nextSpec } = spec as typeof spec & { usage?: string };
+    return nextSpec;
+  });
+  const cableSpecById = new Map(rawCableSpecs.map((spec) => [spec.id, spec]));
   const cableSpecByModel = new Map(cableSpecs.map((spec) => [spec.model, spec]));
+  const normalizeItems = (
+    items: Project['connectionPoints'][number]['items'],
+  ): Project['connectionPoints'][number]['items'] =>
+    items.map((item) => ({
+      ...item,
+      usage:
+        item.usage ??
+        defaultConnectionItemById.get(item.id)?.usage ??
+        (cableSpecById.get(item.cableSpecId) as { usage?: string } | undefined)?.usage,
+    }));
   const deviceInstances =
     project.deviceInstances ??
     legacyProject.devices?.map((device) => ({
@@ -87,17 +111,21 @@ function normalizeProject(project: Project): Project {
     ? project.connectionPoints.map((point) => {
         const legacyPoint = point as typeof point & {
           connectionHeightMm?: number;
-          cableBundle?: {
-            items: Array<{
-              id: string;
-              cableSpecId?: string;
-              model?: string;
-              quantity: Project['connectionPoints'][number]['items'][number]['quantity'];
-            }>;
-          };
+        cableBundle?: {
+          items: Array<{
+            id: string;
+            cableSpecId?: string;
+            model?: string;
+            usage?: string;
+            quantity: Project['connectionPoints'][number]['items'][number]['quantity'];
+          }>;
+        };
         };
         if (Array.isArray(point.items)) {
-          return point;
+          return {
+            ...point,
+            items: normalizeItems(point.items),
+          };
         }
 
         return {
@@ -113,6 +141,11 @@ function normalizeProject(project: Project): Project {
                 item.cableSpecId ??
                 (item.model ? cableSpecByModel.get(item.model)?.id : undefined) ??
                 item.id,
+              usage:
+                item.usage ??
+                (item.cableSpecId
+                  ? (cableSpecById.get(item.cableSpecId) as { usage?: string } | undefined)?.usage
+                  : undefined),
               quantity: item.quantity,
               connectionHeightMm: legacyPoint.connectionHeightMm ?? 0,
             })) ?? [],
@@ -139,10 +172,19 @@ function normalizeProject(project: Project): Project {
     connectionPoints,
     cableSpecs,
     connectionPointPresets: project.connectionPointPresets?.length
-      ? project.connectionPointPresets
+      ? project.connectionPointPresets.map((preset) => ({
+          ...preset,
+          items: normalizeItems(preset.items),
+        }))
       : defaultConnectionPointPresets,
     deviceTypePresets: project.deviceTypePresets?.length
-      ? project.deviceTypePresets
+      ? project.deviceTypePresets.map((preset) => ({
+          ...preset,
+          ports: preset.ports.map((port) => ({
+            ...port,
+            items: normalizeItems(port.items),
+          })),
+        }))
       : defaultDeviceTypePresets,
     routes: project.routes ?? [],
   };

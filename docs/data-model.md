@@ -38,7 +38,6 @@ type DeviceConnectionPoint = {
 
 type CableSpec = {
   id: string;
-  usage: string;
   model: string;
   diameterText: string;
   diameterMinMm?: number;
@@ -49,12 +48,14 @@ type CableSpec = {
 type ConnectionCableItem = {
   id: string;
   cableSpecId: string;
+  usage?: string;
   quantity: CableQuantity;
   connectionHeightMm: number;
 };
 
 type ConnectionPointPreset = {
   id: string;
+  kind?: 'device-port' | 'custom';
   name: string;
   items: ConnectionCableItem[];
 };
@@ -74,8 +75,12 @@ type DeviceTypePreset = {
 - `topology` 保存节点与通道。
 - `deviceInstances` 保存真实设备实例；同一设备可关联多个 `connectionPoints`。
 - `connectionPoints` 保存绑定到拓扑节点的接线孔；设备模式关联设备实例，自定义模式可独立存在。
-- `ConnectionCableItem` 保存接线孔内某种线缆的数量和接线点高度，线缆型号、用途和外径来自 `CableSpec`。
+- `CableSpec` 只保存线缆型号和外径信息；型号在当前工程线缆库中唯一。
+- `ConnectionCableItem` 保存接线孔内某种线缆的型号引用、数量、安装高度和可选用途。
 - `cableSpecs`、`connectionPointPresets`、`deviceTypePresets` 保存当前工程内常用库；浏览器全局常用库由独立 `localStorage` key 保存。
+- `DeviceConnectionPoint.presetRef` 记录节点来源模板，用于模板修改时确认同步；取消同步后节点保留当前快照并解除绑定。
 - `routes` 保存接线孔到接线孔的路径，并通过 `status` 标记是否需要重算。
 - `ChannelSegment.cableIds` 是从有效路由和起点接线孔明细派生写回的可追踪摘要。
+- `ChannelSegment.depthMm` 保存用户输入的通道敷设深度；推荐规格和 BOM 由当前工程状态实时派生。
+- 阶段 4 不把 BOM 明细落库，避免路由、安装高度或深度修改后出现旧统计残留。
 - 一键清除节点属性只清空 `deviceInstances`、`connectionPoints`、`routes` 和通道上的线缆登记，不清空拓扑和常用库。

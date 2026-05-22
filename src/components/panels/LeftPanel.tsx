@@ -1,6 +1,6 @@
 import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAppSelector } from '@/hooks/useAppSelector';
-import { selectProject, selectTopology } from '@/state/selectors/projectSelectors';
+import { selectBomSummary, selectProject, selectTopology } from '@/state/selectors/projectSelectors';
 import { selectLayerVisibility, selectLeftPanelCollapsed } from '@/state/selectors/uiSelectors';
 import { toggleLayer, toggleLeftPanelCollapsed } from '@/state/slices/uiSlice';
 import type { LayerVisibility } from '@/domain/project/types';
@@ -13,12 +13,23 @@ const layerLabels: Record<keyof LayerVisibility, string> = {
   annotations: '文字标注',
 };
 
+const categoryLabels = {
+  tray: '线槽',
+  duct: '排管',
+};
+
+function formatMeters(mm: number) {
+  return `${(mm / 1000).toFixed(2)} m`;
+}
+
 export function LeftPanel() {
   const dispatch = useAppDispatch();
   const project = useAppSelector(selectProject);
   const topology = useAppSelector(selectTopology);
+  const bomSummary = useAppSelector(selectBomSummary);
   const layerVisibility = useAppSelector(selectLayerVisibility);
   const collapsed = useAppSelector(selectLeftPanelCollapsed);
+  const hasBomRows = bomSummary.cableRows.length > 0 || bomSummary.channelRows.length > 0;
 
   if (collapsed) {
     return (
@@ -53,10 +64,56 @@ export function LeftPanel() {
           <h2>BOM 清单</h2>
           <span>实时统计</span>
         </div>
-        <div className="empty-state">
-          <strong>暂无材料数据</strong>
-          <p>完成设备路由与规格推演后，这里会显示线缆长度、通道规格与数量。</p>
-        </div>
+        {hasBomRows ? (
+          <div className="bom-list">
+            {bomSummary.missingDepthChannelIds.length > 0 && (
+              <div className="bom-warning">
+                {bomSummary.missingDepthChannelIds.length} 条已推演通道未填写敷设深度，线缆竖向长度按 0 mm 深度暂算。
+              </div>
+            )}
+
+            <div className="bom-section">
+              <h3>线缆</h3>
+              {bomSummary.cableRows.length > 0 ? (
+                bomSummary.cableRows.map((row) => (
+                  <div className="bom-row" key={row.cableSpecId}>
+                    <div>
+                      <strong>{row.model}</strong>
+                      <span>{row.quantity} 根</span>
+                    </div>
+                    <em>线缆</em>
+                    <b>{formatMeters(row.totalLengthMm)}</b>
+                  </div>
+                ))
+              ) : (
+                <p className="bom-empty">暂无有效线缆路由</p>
+              )}
+            </div>
+
+            <div className="bom-section">
+              <h3>通道</h3>
+              {bomSummary.channelRows.length > 0 ? (
+                bomSummary.channelRows.map((row) => (
+                  <div className="bom-row" key={`${row.category}-${row.label}`}>
+                    <div>
+                      <strong>{row.label}</strong>
+                      <span>{categoryLabels[row.category]}</span>
+                    </div>
+                    <em>{row.count} 段</em>
+                    <b>{formatMeters(row.totalLengthMm)}</b>
+                  </div>
+                ))
+              ) : (
+                <p className="bom-empty">暂无已推演通道规格</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>暂无材料数据</strong>
+            <p>完成设备路由与规格推演后，这里会显示线缆长度、通道规格与数量。</p>
+          </div>
+        )}
       </section>
 
       <section className="panel-card">

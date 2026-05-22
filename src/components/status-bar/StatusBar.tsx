@@ -6,6 +6,7 @@ const stepLabels = {
   calibration: '校准',
   drawing: '绘制',
   devices: '设备',
+  library: '库',
   routing: '路由',
   quantity: '算量',
   export: '导出',

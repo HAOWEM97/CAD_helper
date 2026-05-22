@@ -16,7 +16,7 @@ function specById(cableSpecs: CableSpec[]) {
 
 function itemKey(item: ConnectionCableItem, cableSpecsById: Map<string, CableSpec>) {
   const spec = cableSpecsById.get(item.cableSpecId);
-  return `${spec?.usage ?? ''}|${spec?.model ?? item.cableSpecId}`;
+  return spec?.model ?? item.cableSpecId;
 }
 
 export function quantityText(quantity: CableQuantity) {
@@ -36,9 +36,10 @@ export function summarizeConnectionItems(items: ConnectionCableItem[], cableSpec
   return items
     .map((item) => {
       const spec = cableSpecsById.get(item.cableSpecId);
-      return `${spec?.usage ?? '未知用途'}/${spec?.model ?? '未知型号'} x ${quantityText(
-        item.quantity,
-      )} @ ${item.connectionHeightMm}mm`;
+      const usageText = item.usage?.trim() ? `${item.usage.trim()} / ` : '';
+      return `${usageText}${spec?.model ?? '未知型号'} x ${quantityText(item.quantity)} @ ${
+        item.connectionHeightMm
+      }mm`;
     })
     .join('；');
 }
@@ -47,9 +48,7 @@ export function connectionItemsToCableIds(items: ConnectionCableItem[], cableSpe
   const cableSpecsById = specById(cableSpecs);
   return items.map((item) => {
     const spec = cableSpecsById.get(item.cableSpecId);
-    return `${spec?.usage ?? 'unknown'}:${spec?.model ?? item.cableSpecId}x${quantityText(
-      item.quantity,
-    )}`;
+    return `${spec?.model ?? item.cableSpecId}x${quantityText(item.quantity)}`;
   });
 }
 
@@ -77,7 +76,7 @@ export function validateConnectionItems(
     }
 
     const fromSpec = cableSpecsById.get(fromItem.cableSpecId);
-    const fromLabel = `${fromSpec?.usage ?? '未知用途'}/${fromSpec?.model ?? fromItem.cableSpecId}`;
+    const fromLabel = fromSpec?.model ?? fromItem.cableSpecId;
     const toItem = toItemsByKey.get(itemKey(fromItem, cableSpecsById));
     if (!toItem) {
       return {
@@ -100,6 +99,6 @@ export function validateConnectionItems(
 
   return {
     compatible: true,
-    reason: '线缆用途、型号和数量匹配。',
+    reason: '线缆型号和数量匹配。',
   };
 }

@@ -47,12 +47,18 @@ describe('device library and connection validation', () => {
   it('contains the Excel-derived default devices and cable diameter ranges', () => {
     expect(defaultDeviceTypePresets.map((preset) => preset.deviceType)).toContain('汇流排柜');
     expect(defaultCableSpecs).toHaveLength(8);
+    expect(defaultCableSpecs.every((spec) => !('usage' in spec))).toBe(true);
     expect(
       defaultDeviceTypePresets
         .find((preset) => preset.deviceType === '主机')
         ?.ports.find((port) => port.portType === '主机到终端')
-        ?.items.map((item) => item.connectionHeightMm),
-    ).toEqual([500, 600, 200, 800]);
+        ?.items.map((item) => [item.usage, item.connectionHeightMm]),
+    ).toEqual([
+      ['交流线', 500],
+      ['压缩机线', 600],
+      ['接地线', 200],
+      ['直流线', 800],
+    ]);
     expect(defaultConnectionPointPresets.some((preset) => preset.name === '主机到终端')).toBe(
       true,
     );
@@ -63,12 +69,13 @@ describe('device library and connection validation', () => {
     });
   });
 
-  it('matches finite connection items by usage, model and quantity while ignoring height', () => {
+  it('matches finite connection items by model and quantity while ignoring usage and height', () => {
     const spec = defaultCableSpecs.find((item) => item.model === 'YJV-1.8/3kV-1x120')!;
     const items: ConnectionCableItem[] = [
       {
         id: 'item-a',
         cableSpecId: spec.id,
+        usage: '直流线',
         quantity: { mode: 'fixed', count: 4 },
         connectionHeightMm: 600,
       },
@@ -77,7 +84,7 @@ describe('device library and connection validation', () => {
     expect(
       validateConnectionItems(
         items,
-        [{ ...items[0], id: 'item-b', connectionHeightMm: 1200 }],
+        [{ ...items[0], id: 'item-b', usage: '备用线', connectionHeightMm: 1200 }],
         defaultCableSpecs,
       ).compatible,
     ).toBe(true);

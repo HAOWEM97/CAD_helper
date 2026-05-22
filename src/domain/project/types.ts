@@ -1,6 +1,13 @@
 import type { CalibrationDraft, CalibrationState, CadPoint } from '@/domain/cad-coordinate/types';
 
-export type WorkflowStep = 'calibration' | 'drawing' | 'devices' | 'routing' | 'quantity' | 'export';
+export type WorkflowStep =
+  | 'calibration'
+  | 'drawing'
+  | 'devices'
+  | 'library'
+  | 'routing'
+  | 'quantity'
+  | 'export';
 
 export type ImageMetadata = {
   id: string;
@@ -50,7 +57,6 @@ export type CableQuantity =
 
 export type CableSpec = {
   id: string;
-  usage: string;
   model: string;
   diameterText: string;
   diameterMinMm?: number;
@@ -61,12 +67,14 @@ export type CableSpec = {
 export type ConnectionCableItem = {
   id: string;
   cableSpecId: string;
+  usage?: string;
   quantity: CableQuantity;
   connectionHeightMm: number;
 };
 
 export type ConnectionPointPreset = {
   id: string;
+  kind?: 'device-port' | 'custom';
   name: string;
   items: ConnectionCableItem[];
 };
@@ -95,8 +103,13 @@ export type DeviceConnectionPoint = {
   nodeId: string;
   mode: 'device' | 'custom';
   deviceId?: string;
+  customInstanceName?: string;
   portType: string;
   items: ConnectionCableItem[];
+  presetRef?: {
+    kind: 'device-port' | 'custom';
+    id: string;
+  };
 };
 
 export type CableRouteStatus = 'valid' | 'needs-recalculation';
