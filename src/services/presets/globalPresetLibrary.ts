@@ -21,8 +21,43 @@ function normalizeCableSpec(spec: CableSpec & { usage?: string }): CableSpec {
   return nextSpec;
 }
 
-function normalizeConnectionItems<T extends { items: Array<{ usage?: string }> }>(item: T): T {
-  return item;
+function normalizeConnectionItems<T extends { items: Array<{ cableSpecId: string; usage?: string }> }>(
+  item: T,
+  replacementIdById: Map<string, string>,
+): T {
+  return {
+    ...item,
+    items: item.items.map((connectionItem) => ({
+      ...connectionItem,
+      cableSpecId: replacementIdById.get(connectionItem.cableSpecId) ?? connectionItem.cableSpecId,
+    })),
+  };
+}
+
+function dedupeCableSpecsByModel(cableSpecs: CableSpec[]) {
+  const specsByModel = new Map<string, CableSpec>();
+  const replacementIdById = new Map<string, string>();
+
+  for (const spec of cableSpecs) {
+    const model = spec.model.trim();
+    if (!model) {
+      continue;
+    }
+
+    const kept = specsByModel.get(model);
+    if (kept) {
+      replacementIdById.set(spec.id, kept.id);
+    } else {
+      const nextSpec = { ...spec, model };
+      specsByModel.set(model, nextSpec);
+      replacementIdById.set(spec.id, nextSpec.id);
+    }
+  }
+
+  return {
+    cableSpecs: Array.from(specsByModel.values()),
+    replacementIdById,
+  };
 }
 
 function storageIsAvailable() {
@@ -85,18 +120,28 @@ export function loadGlobalPresetLibrary(): GlobalPresetLibrary {
       return emptyLibrary();
     }
 
+    const normalizedCableSpecResult = dedupeCableSpecsByModel(
+      Array.isArray(parsed.cableSpecs)
+        ? parsed.cableSpecs.map((spec) =>
+            normalizeCableSpec(spec as CableSpec & { usage?: string }),
+          )
+        : [],
+    );
+
     return {
       version: GLOBAL_PRESET_VERSION,
-      cableSpecs: Array.isArray(parsed.cableSpecs)
-        ? parsed.cableSpecs.map((spec) => normalizeCableSpec(spec as CableSpec & { usage?: string }))
-        : [],
+      cableSpecs: normalizedCableSpecResult.cableSpecs,
       connectionPointPresets: Array.isArray(parsed.connectionPointPresets)
-        ? parsed.connectionPointPresets.map(normalizeConnectionItems)
+        ? parsed.connectionPointPresets.map((preset) =>
+            normalizeConnectionItems(preset, normalizedCableSpecResult.replacementIdById),
+          )
         : [],
       deviceTypePresets: Array.isArray(parsed.deviceTypePresets)
         ? parsed.deviceTypePresets.map((preset) => ({
             ...preset,
-            ports: preset.ports.map(normalizeConnectionItems),
+            ports: preset.ports.map((port) =>
+              normalizeConnectionItems(port, normalizedCableSpecResult.replacementIdById),
+            ),
           }))
         : [],
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
@@ -108,9 +153,14 @@ export function loadGlobalPresetLibrary(): GlobalPresetLibrary {
 
 export function upsertGlobalCableSpec(spec: CableSpec) {
   const library = loadGlobalPresetLibrary();
+  const model = spec.model.trim();
+  if (!model) {
+    return;
+  }
+
   const nextSpecs = [
-    ...library.cableSpecs.filter((item) => item.model !== spec.model),
-    spec,
+    ...library.cableSpecs.filter((item) => item.model.trim() !== model),
+    { ...spec, model },
   ];
   saveGlobalPresetLibrary({
     cableSpecs: nextSpecs,

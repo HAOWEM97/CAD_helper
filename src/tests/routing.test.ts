@@ -62,6 +62,15 @@ describe('device library and connection validation', () => {
     expect(defaultConnectionPointPresets.some((preset) => preset.name === '主机到终端')).toBe(
       true,
     );
+    const cableWellPort = defaultDeviceTypePresets
+      .find((preset) => preset.deviceType === '电缆井')
+      ?.ports.find((port) => port.portType === '电缆汇总点');
+    expect(cableWellPort?.items).toEqual([
+      expect.objectContaining({
+        acceptsAnyCable: true,
+        quantity: { mode: 'unlimited' },
+      }),
+    ]);
     expect(parseDiameterText('约 19.5 - 20.5')).toEqual({
       diameterMinMm: 19.5,
       diameterMaxMm: 20.5,
@@ -113,5 +122,32 @@ describe('device library and connection validation', () => {
 
     expect(validateConnectionItems(start, end, defaultCableSpecs).compatible).toBe(true);
     expect(validateConnectionItems(end, start, defaultCableSpecs).compatible).toBe(false);
+  });
+
+  it('allows finite starts to connect to an any-cable unlimited endpoint', () => {
+    const spec = defaultCableSpecs.find((item) => item.model === 'YJV-1.8/3kV-1x120')!;
+    const start: ConnectionCableItem[] = [
+      {
+        id: 'item-start',
+        cableSpecId: spec.id,
+        quantity: { mode: 'fixed', count: 4 },
+        connectionHeightMm: 600,
+      },
+    ];
+    const anyCableEnd: ConnectionCableItem[] = [
+      {
+        id: 'item-any',
+        cableSpecId: 'cable-spec-*',
+        acceptsAnyCable: true,
+        quantity: { mode: 'unlimited' },
+        connectionHeightMm: 500,
+      },
+    ];
+
+    expect(validateConnectionItems(start, anyCableEnd, defaultCableSpecs)).toEqual({
+      compatible: true,
+      reason: '终点可承接任意线缆。',
+    });
+    expect(validateConnectionItems(anyCableEnd, start, defaultCableSpecs).compatible).toBe(false);
   });
 });

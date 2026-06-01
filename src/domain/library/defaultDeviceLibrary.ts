@@ -15,6 +15,7 @@ type SourceRow = {
   model: string;
   diameterText: string;
   heightMm: number;
+  acceptsAnyCable?: boolean;
 };
 
 const sourceRows: SourceRow[] = [
@@ -49,6 +50,7 @@ const sourceRows: SourceRow[] = [
   { deviceType: '快充终端', portType: '快充主机到快充终端', usage: '交流线', quantityText: '1根', model: 'VVR-0.6/1kV-2x2.5', diameterText: '约 11.0', heightMm: 500 },
   { deviceType: '快充终端', portType: '快充主机到快充终端', usage: '通信线', quantityText: '1根', model: '超六类屏蔽网线 (Cat6A STP)', diameterText: '约 7.4 - 7.8', heightMm: 500 },
   { deviceType: '快充终端', portType: '快充主机到快充终端', usage: '接地线', quantityText: '1根', model: 'YJV-0.6/1kV-1x50', diameterText: '约 13.5 - 14.0', heightMm: 500 },
+  { deviceType: '电缆井', portType: '电缆汇总点', usage: '', quantityText: '不限', model: '*', diameterText: '', heightMm: 500, acceptsAnyCable: true },
 ];
 
 export function parseCableQuantity(value: string): CableQuantity {
@@ -83,6 +85,7 @@ function connectionItemFromRow(row: SourceRow): ConnectionCableItem {
   return {
     id: `connection-cable-${row.deviceType}-${row.portType}-${row.usage}-${row.model}`.replace(/\s+/g, '-'),
     cableSpecId: specId(row.model),
+    acceptsAnyCable: row.acceptsAnyCable,
     usage: row.usage,
     quantity: parseCableQuantity(row.quantityText),
     connectionHeightMm: row.heightMm,
@@ -91,7 +94,7 @@ function connectionItemFromRow(row: SourceRow): ConnectionCableItem {
 
 export const defaultCableSpecs: CableSpec[] = Array.from(
   new Map(
-    sourceRows.map((row) => {
+    sourceRows.filter((row) => !row.acceptsAnyCable).map((row) => {
       const diameter = parseDiameterText(row.diameterText);
       return [
         specId(row.model),

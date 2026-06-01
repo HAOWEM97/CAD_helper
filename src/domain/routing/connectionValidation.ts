@@ -15,8 +15,24 @@ function specById(cableSpecs: CableSpec[]) {
 }
 
 function itemKey(item: ConnectionCableItem, cableSpecsById: Map<string, CableSpec>) {
+  if (item.acceptsAnyCable) {
+    return '*';
+  }
+
   const spec = cableSpecsById.get(item.cableSpecId);
   return spec?.model ?? item.cableSpecId;
+}
+
+function itemLabel(item: ConnectionCableItem, cableSpecsById: Map<string, CableSpec>) {
+  if (item.acceptsAnyCable) {
+    return '不限';
+  }
+
+  return cableSpecsById.get(item.cableSpecId)?.model ?? item.cableSpecId;
+}
+
+function hasAnyCableSink(items: ConnectionCableItem[]) {
+  return items.some((item) => item.acceptsAnyCable && item.quantity.mode === 'unlimited');
 }
 
 export function quantityText(quantity: CableQuantity) {
@@ -35,9 +51,8 @@ export function summarizeConnectionItems(items: ConnectionCableItem[], cableSpec
   const cableSpecsById = specById(cableSpecs);
   return items
     .map((item) => {
-      const spec = cableSpecsById.get(item.cableSpecId);
       const usageText = item.usage?.trim() ? `${item.usage.trim()} / ` : '';
-      return `${usageText}${spec?.model ?? '未知型号'} x ${quantityText(item.quantity)} @ ${
+      return `${usageText}${itemLabel(item, cableSpecsById)} x ${quantityText(item.quantity)} @ ${
         item.connectionHeightMm
       }mm`;
     })
@@ -47,8 +62,7 @@ export function summarizeConnectionItems(items: ConnectionCableItem[], cableSpec
 export function connectionItemsToCableIds(items: ConnectionCableItem[], cableSpecs: CableSpec[]) {
   const cableSpecsById = specById(cableSpecs);
   return items.map((item) => {
-    const spec = cableSpecsById.get(item.cableSpecId);
-    return `${spec?.model ?? item.cableSpecId}x${quantityText(item.quantity)}`;
+    return `${itemLabel(item, cableSpecsById)}x${quantityText(item.quantity)}`;
   });
 }
 
@@ -65,6 +79,7 @@ export function validateConnectionItems(
   }
 
   const cableSpecsById = specById(cableSpecs);
+  const toAcceptsAnyCable = hasAnyCableSink(toItems);
   const toItemsByKey = new Map(toItems.map((item) => [itemKey(item, cableSpecsById), item]));
 
   for (const fromItem of fromItems) {
@@ -75,10 +90,13 @@ export function validateConnectionItems(
       };
     }
 
-    const fromSpec = cableSpecsById.get(fromItem.cableSpecId);
-    const fromLabel = fromSpec?.model ?? fromItem.cableSpecId;
+    const fromLabel = itemLabel(fromItem, cableSpecsById);
     const toItem = toItemsByKey.get(itemKey(fromItem, cableSpecsById));
     if (!toItem) {
+      if (toAcceptsAnyCable) {
+        continue;
+      }
+
       return {
         compatible: false,
         reason: `终点缺少 ${fromLabel}。`,
@@ -99,6 +117,6 @@ export function validateConnectionItems(
 
   return {
     compatible: true,
-    reason: '线缆型号和数量匹配。',
+    reason: toAcceptsAnyCable ? '终点可承接任意线缆。' : '线缆型号和数量匹配。',
   };
 }

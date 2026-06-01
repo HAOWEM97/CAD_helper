@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
 import { parseCableQuantity, parseDiameterText } from '@/domain/library/defaultDeviceLibrary';
 import type {
@@ -37,6 +37,7 @@ import {
 import {
   selectActiveStep,
   selectRightPanelCollapsed,
+  selectRightPanelWidth,
   selectSelectedTopologyObject,
 } from '@/state/selectors/uiSelectors';
 import {
@@ -45,6 +46,7 @@ import {
   createDefaultCustomConnectionPointName,
   createDefaultDeviceName,
   deleteCableSpec,
+  deleteCableRoute,
   deleteConnectionPoint,
   deleteConnectionPointPreset,
   deleteDeviceTypePreset,
@@ -61,6 +63,7 @@ import {
   upsertDeviceTypePresetWithSync,
 } from '@/state/slices/projectSlice';
 import {
+  setRightPanelWidth,
   setSelectedRouteId,
   setSelectedTopologyObject,
   toggleRightPanelCollapsed,
@@ -158,6 +161,21 @@ function createBlankCableSpec(): CableSpec {
     model: '',
     diameterText: '',
   };
+}
+
+function uniqueCableSpecsByModel(...specGroups: CableSpec[][]) {
+  const specsByModel = new Map<string, CableSpec>();
+
+  for (const spec of specGroups.flat()) {
+    const model = spec.model.trim();
+    if (!model || specsByModel.has(model)) {
+      continue;
+    }
+
+    specsByModel.set(model, { ...spec, model });
+  }
+
+  return Array.from(specsByModel.values());
 }
 
 function connectionPointPresetFromItems(name: string, items: ConnectionCableItem[]): ConnectionPointPreset {
@@ -438,6 +456,7 @@ function CableItemsTable({
       {items.map((item, index) => {
         const spec = specForItem(item, cableSpecs);
         const expanded = expandedItemIds.has(item.id);
+        const itemAcceptsAnyCable = Boolean(item.acceptsAnyCable);
         return (
           <div className="connection-cable-entry" key={item.id}>
             <div className="connection-cable-row">
@@ -452,9 +471,11 @@ function CableItemsTable({
               )}
               {editable ? (
                 <select
+                  disabled={itemAcceptsAnyCable}
                   onChange={(event) => onChangeItem?.(index, { cableSpecId: event.target.value })}
                   value={item.cableSpecId}
                 >
+                  {itemAcceptsAnyCable && <option value={item.cableSpecId}>不限</option>}
                   {cableSpecs.map((cableSpec) => (
                     <option key={cableSpec.id} value={cableSpec.id}>
                       {cableSpec.model}
@@ -477,11 +498,11 @@ function CableItemsTable({
                   }}
                   type="button"
                 >
-                  {spec?.model ?? '未知型号'}
+                  {itemAcceptsAnyCable ? '不限' : spec?.model ?? '未知型号'}
                 </button>
               )}
               <input
-                disabled={!editable}
+                disabled={!editable || itemAcceptsAnyCable}
                 onChange={(event) =>
                   onChangeItem?.(index, { quantity: parseCableQuantity(event.target.value) })
                 }
@@ -510,9 +531,14 @@ function CableItemsTable({
                 </button>
               )}
             </div>
-            {(expanded || editable) && spec && (
+            {(expanded || editable) && (spec || itemAcceptsAnyCable) && (
               <div className="connection-cable-detail">
-                <span>外径：{spec.diameterText || (spec.diameterMm ? `${spec.diameterMm}mm` : '未填写')}</span>
+                <span>
+                  外径：
+                  {itemAcceptsAnyCable
+                    ? '不限'
+                    : spec?.diameterText || (spec?.diameterMm ? `${spec.diameterMm}mm` : '未填写')}
+                </span>
               </div>
             )}
           </div>
@@ -538,7 +564,7 @@ function DeviceConnectionEditor() {
     [globalLibrary.deviceTypePresets, projectDeviceTypePresets],
   );
   const allCableSpecs = useMemo(
-    () => [...cableSpecs, ...globalLibrary.cableSpecs],
+    () => uniqueCableSpecsByModel(cableSpecs, globalLibrary.cableSpecs),
     [cableSpecs, globalLibrary.cableSpecs],
   );
   const allConnectionPointPresets = useMemo(
@@ -705,7 +731,12 @@ function DeviceConnectionEditor() {
   }
 
   function saveNewCableSpec() {
-    if (!newCableModel.trim()) {
+    const model = newCableModel.trim();
+    if (!model) {
+      return;
+    }
+    if (allCableSpecs.some((spec) => spec.model.trim() === model)) {
+      window.alert('线缆型号已存在。');
       return;
     }
     const spec = buildCableSpec(newCableModel, newCableDiameter);
@@ -1129,6 +1160,8 @@ function RoutingTodoPanel() {
   const routes = useAppSelector(selectRoutes);
   const [activeStartId, setActiveStartId] = useState<string | null>(null);
   const [targetId, setTargetId] = useState('');
+  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
+  const [routeError, setRouteError] = useState('');
   const activeStart = connectionPoints.find((point) => point.id === activeStartId) ?? null;
   const routeFromIds = new Set(routes.map((route) => route.fromConnectionPointId));
   const routeToIds = new Set(routes.map((route) => route.toConnectionPointId));
@@ -1144,6 +1177,80 @@ function RoutingTodoPanel() {
         }))
     : [];
   const selectedTarget = compatibleTargets.find((item) => item.point.id === targetId) ?? null;
+
+  function selectStart(pointId: string, nextTargetId = '', routeId: string | null = null) {
+    setActiveStartId(pointId);
+    setTargetId(nextTargetId);
+    setEditingRouteId(routeId);
+    setRouteError('');
+  }
+
+  function generateRoute() {
+    if (!activeStart || !selectedTarget?.validation.compatible) {
+      return;
+    }
+
+    const result = findShortestChannelPath(
+      topology,
+      activeStart.nodeId,
+      selectedTarget.point.nodeId,
+    );
+    if (!result.reachable || result.channelIds.length === 0) {
+      setRouteError('当前拓扑中无法到达该终点，请检查通道是否连通。');
+      return;
+    }
+
+    const routeId = editingRouteId ?? createPanelId('route');
+    dispatch(
+      createCableRoute({
+        id: routeId,
+        fromConnectionPointId: activeStart.id,
+        toConnectionPointId: selectedTarget.point.id,
+        pathSegmentIds: result.channelIds,
+        status: 'valid',
+      }),
+    );
+    dispatch(setSelectedRouteId(routeId));
+    setTargetId('');
+    setEditingRouteId(null);
+    setRouteError('');
+  }
+
+  function renderTargetEditor(point: DeviceConnectionPoint) {
+    if (activeStartId !== point.id) {
+      return null;
+    }
+
+    return (
+      <div className="route-inline-editor">
+        <label>
+          <span>{editingRouteId ? '重算终点' : '选择终点'}</span>
+          <select onChange={(event) => setTargetId(event.target.value)} value={targetId}>
+            <option value="">选择兼容终点</option>
+            {compatibleTargets.map(({ point: targetPoint, validation }) => (
+              <option disabled={!validation.compatible} key={targetPoint.id} value={targetPoint.id}>
+                {connectionLabel(targetPoint, deviceInstances)} - {validation.reason}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedTarget && (
+          <div className={selectedTarget.validation.compatible ? 'scope-note' : 'locked-note'}>
+            {selectedTarget.validation.reason}
+          </div>
+        )}
+        {routeError && <div className="locked-note">{routeError}</div>}
+        <button
+          className="primary-button"
+          disabled={!selectedTarget?.validation.compatible}
+          onClick={generateRoute}
+          type="button"
+        >
+          {editingRouteId ? '重新生成路由' : '生成整组路由'}
+        </button>
+      </div>
+    );
+  }
 
   const groups = [
     {
@@ -1180,82 +1287,24 @@ function RoutingTodoPanel() {
             </div>
           ) : (
             group.items.map((point) => (
-              <button
-                className={activeStartId === point.id ? 'route-row active' : 'route-row'}
-                disabled={connectionItemsHaveUnlimitedCapacity(point.items)}
-                key={point.id}
-                onClick={() => {
-                  setActiveStartId(point.id);
-                  setTargetId('');
-                }}
-                type="button"
-              >
-                <span>{connectionLabel(point, deviceInstances)}</span>
-                <strong>
-                  {connectionItemsHaveUnlimitedCapacity(point.items) ? '终点' : '起点'}
-                </strong>
-              </button>
+              <div className="route-entry" key={point.id}>
+                <button
+                  className={activeStartId === point.id ? 'route-row active' : 'route-row'}
+                  disabled={connectionItemsHaveUnlimitedCapacity(point.items)}
+                  onClick={() => selectStart(point.id)}
+                  type="button"
+                >
+                  <span>{connectionLabel(point, deviceInstances)}</span>
+                  <strong>
+                    {connectionItemsHaveUnlimitedCapacity(point.items) ? '终点' : '起点'}
+                  </strong>
+                </button>
+                {renderTargetEditor(point)}
+              </div>
             ))
           )}
         </div>
       ))}
-
-      <div className="property-form">
-        <label>
-          <span>选择终点</span>
-          <select
-            disabled={!activeStart}
-            onChange={(event) => setTargetId(event.target.value)}
-            value={targetId}
-          >
-            <option value="">选择兼容终点</option>
-            {compatibleTargets.map(({ point, validation }) => (
-              <option disabled={!validation.compatible} key={point.id} value={point.id}>
-                {connectionLabel(point, deviceInstances)} - {validation.reason}
-              </option>
-            ))}
-          </select>
-        </label>
-        {selectedTarget && (
-          <div className={selectedTarget.validation.compatible ? 'scope-note' : 'locked-note'}>
-            {selectedTarget.validation.reason}
-          </div>
-        )}
-        <button
-          className="primary-button"
-          disabled={!activeStart || !selectedTarget?.validation.compatible}
-          onClick={() => {
-            if (!activeStart || !selectedTarget?.validation.compatible) {
-              return;
-            }
-
-            const result = findShortestChannelPath(
-              topology,
-              activeStart.nodeId,
-              selectedTarget.point.nodeId,
-            );
-            if (!result.reachable || result.channelIds.length === 0) {
-              return;
-            }
-
-            const routeId = createPanelId('route');
-            dispatch(
-              createCableRoute({
-                id: routeId,
-                fromConnectionPointId: activeStart.id,
-                toConnectionPointId: selectedTarget.point.id,
-                pathSegmentIds: result.channelIds,
-                status: 'valid',
-              }),
-            );
-            dispatch(setSelectedRouteId(routeId));
-            setTargetId('');
-          }}
-          type="button"
-        >
-          生成整组路由
-        </button>
-      </div>
 
       <div className="route-list">
         <div className="panel-heading compact-heading">
@@ -1266,18 +1315,57 @@ function RoutingTodoPanel() {
           const from = connectionPoints.find((point) => point.id === route.fromConnectionPointId);
           const to = connectionPoints.find((point) => point.id === route.toConnectionPointId);
           return (
-            <button
-              className="route-row"
+            <div
+              className={route.status === 'valid' ? 'route-row route-record' : 'route-row route-record stale'}
               key={route.id}
               onClick={() => dispatch(setSelectedRouteId(route.id))}
-              type="button"
             >
-              <span>
-                {from ? connectionLabel(from, deviceInstances) : '未知起点'} →{' '}
-                {to ? connectionLabel(to, deviceInstances) : '未知终点'}
-              </span>
-              <strong>{route.status === 'valid' ? '有效' : '需重算'}</strong>
-            </button>
+              <div className="route-record-main">
+                <span>
+                  <b>起点：</b>
+                  {from ? connectionLabel(from, deviceInstances) : '未知起点'}
+                </span>
+                <span>
+                  <b>终点：</b>
+                  {to ? connectionLabel(to, deviceInstances) : '未知终点'}
+                </span>
+              </div>
+              <div className="route-record-actions">
+                <strong>{route.status === 'valid' ? '有效' : '需重算'}</strong>
+                <button
+                  className="ghost-button compact"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (!from || !to) {
+                      window.alert('这条路由的起点或终点已不存在，无法重算。');
+                      return;
+                    }
+                    selectStart(from.id, to.id, route.id);
+                  }}
+                  type="button"
+                >
+                  重算
+                </button>
+                <button
+                  className="danger-button compact"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (window.confirm('确定删除这条路由吗？通道和接线孔不会删除。')) {
+                      dispatch(deleteCableRoute(route.id));
+                      dispatch(setSelectedRouteId(null));
+                      if (editingRouteId === route.id) {
+                        setEditingRouteId(null);
+                        setActiveStartId(null);
+                        setTargetId('');
+                      }
+                    }
+                  }}
+                  type="button"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -1426,7 +1514,7 @@ function LibraryPanel() {
     );
   }, [connectionPointPresets, deviceTypePresets]);
 
-  const cableModelDuplicate = cableSpecs.some(
+  const cableModelDuplicate = uniqueCableSpecsByModel(cableSpecs, globalLibrary.cableSpecs).some(
     (spec) => spec.id !== cableDraft.id && spec.model.trim() === cableDraft.model.trim(),
   );
 
@@ -1555,7 +1643,7 @@ function LibraryPanel() {
     setDeviceDraft({ deviceType: '', portType: '', items: [] });
   }
 
-  const allCableSpecs = [...cableSpecs, ...globalLibrary.cableSpecs];
+  const allCableSpecs = uniqueCableSpecsByModel(cableSpecs, globalLibrary.cableSpecs);
 
   return (
     <div className="library-panel">
@@ -1674,8 +1762,14 @@ function LibraryPanel() {
                   </div>
                   <button
                     className="ghost-button compact"
-                    disabled={cableSpecs.some((item) => item.model === spec.model)}
-                    onClick={() => dispatch(upsertCableSpec(spec))}
+                    disabled={cableSpecs.some((item) => item.model.trim() === spec.model.trim())}
+                    onClick={() => {
+                      if (cableSpecs.some((item) => item.model.trim() === spec.model.trim())) {
+                        window.alert('线缆型号已存在。');
+                        return;
+                      }
+                      dispatch(upsertCableSpec(spec));
+                    }}
                     type="button"
                   >
                     导入
@@ -2023,11 +2117,34 @@ export function RightPanel() {
   const dispatch = useAppDispatch();
   const activeStep = useAppSelector(selectActiveStep);
   const collapsed = useAppSelector(selectRightPanelCollapsed);
+  const rightPanelWidth = useAppSelector(selectRightPanelWidth);
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
   const image = useAppSelector(selectProjectImage);
   const calibrationDraft = useAppSelector(selectCalibrationDraft);
   const calibration = useAppSelector(selectCalibration);
   const guidance = stepGuidance[activeStep];
+
+  function handleResizeMouseDown(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = rightPanelWidth;
+
+    function handleMouseMove(moveEvent: globalThis.MouseEvent) {
+      dispatch(setRightPanelWidth(startWidth - (moveEvent.clientX - startX)));
+    }
+
+    function handleMouseUp() {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }
 
   if (collapsed) {
     return (
@@ -2048,6 +2165,28 @@ export function RightPanel() {
 
   return (
     <aside className="side-panel right-panel">
+      <div
+        aria-label="调整属性面板宽度"
+        aria-orientation="vertical"
+        aria-valuemax={640}
+        aria-valuemin={300}
+        aria-valuenow={rightPanelWidth}
+        className="right-panel-resize-handle"
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            dispatch(setRightPanelWidth(rightPanelWidth + 24));
+          }
+          if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            dispatch(setRightPanelWidth(rightPanelWidth - 24));
+          }
+        }}
+        onMouseDown={handleResizeMouseDown}
+        role="separator"
+        tabIndex={0}
+        title="拖拽调整属性面板宽度"
+      />
       <button
         aria-label="收起属性面板"
         className="panel-collapse-button expanded"

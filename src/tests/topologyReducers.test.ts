@@ -6,6 +6,7 @@ import projectReducer, {
   createCableRoute,
   createDefaultDeviceName,
   deleteCableSpec,
+  deleteCableRoute,
   deleteConnectionPoint,
   deleteConnectionPointPreset,
   deleteTopologyChannel,
@@ -375,6 +376,118 @@ describe('topology reducers', () => {
     expect(state.current.connectionPoints).toHaveLength(2);
     expect(state.current.routes).toHaveLength(1);
     expect(state.current.topology.channels[0].cableIds).toEqual(['CAT6x1']);
+  });
+
+  it('replaces recalculated routes by id and rebuilds channel cable registration after delete', () => {
+    let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
+    state = projectReducer(state, addTopologyNode({ id: 'node-c', position: { x: 20, y: 0 } }));
+    state = projectReducer(
+      state,
+      addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
+    );
+    state = projectReducer(
+      state,
+      addTopologyChannel({ id: 'channel-b', startNodeId: 'node-b', endNodeId: 'node-c' }),
+    );
+    const spec = { id: 'spec-a', model: 'CAT6', diameterText: '约 7.5' };
+    const items = [
+      {
+        id: 'item-a',
+        cableSpecId: spec.id,
+        quantity: { mode: 'fixed' as const, count: 1 },
+        connectionHeightMm: 800,
+      },
+    ];
+    state = projectReducer(state, upsertCableSpec(spec));
+    state = projectReducer(state, upsertDeviceInstance({ id: 'device-a', name: '起点1', deviceType: '起点' }));
+    state = projectReducer(state, upsertDeviceInstance({ id: 'device-b', name: '终点1', deviceType: '终点' }));
+    state = projectReducer(
+      state,
+      upsertConnectionPoint({
+        id: 'point-a',
+        nodeId: 'node-a',
+        mode: 'device',
+        deviceId: 'device-a',
+        portType: '主线',
+        items,
+      }),
+    );
+    state = projectReducer(
+      state,
+      upsertConnectionPoint({
+        id: 'point-b',
+        nodeId: 'node-c',
+        mode: 'device',
+        deviceId: 'device-b',
+        portType: '主线',
+        items,
+      }),
+    );
+    state = projectReducer(
+      state,
+      createCableRoute({
+        id: 'route-a',
+        fromConnectionPointId: 'point-a',
+        toConnectionPointId: 'point-b',
+        pathSegmentIds: ['channel-a'],
+        status: 'needs-recalculation',
+      }),
+    );
+    state = projectReducer(
+      state,
+      createCableRoute({
+        id: 'route-a',
+        fromConnectionPointId: 'point-a',
+        toConnectionPointId: 'point-b',
+        pathSegmentIds: ['channel-a', 'channel-b'],
+        status: 'valid',
+      }),
+    );
+
+    expect(state.current.routes).toEqual([
+      expect.objectContaining({ id: 'route-a', status: 'valid', pathSegmentIds: ['channel-a', 'channel-b'] }),
+    ]);
+    expect(state.current.topology.channels.map((channel) => channel.cableIds)).toEqual([
+      ['CAT6x1'],
+      ['CAT6x1'],
+    ]);
+
+    state = projectReducer(state, upsertDeviceInstance({ id: 'device-c', name: '终点2', deviceType: '终点' }));
+    state = projectReducer(
+      state,
+      upsertConnectionPoint({
+        id: 'point-c',
+        nodeId: 'node-b',
+        mode: 'device',
+        deviceId: 'device-c',
+        portType: '主线',
+        items,
+      }),
+    );
+    state = projectReducer(
+      state,
+      createCableRoute({
+        id: 'route-b',
+        fromConnectionPointId: 'point-a',
+        toConnectionPointId: 'point-c',
+        pathSegmentIds: ['channel-a'],
+        status: 'valid',
+      }),
+    );
+
+    expect(state.current.routes).toEqual([
+      expect.objectContaining({ id: 'route-b', fromConnectionPointId: 'point-a', toConnectionPointId: 'point-c' }),
+    ]);
+    expect(state.current.topology.channels.map((channel) => channel.cableIds)).toEqual([
+      ['CAT6x1'],
+      [],
+    ]);
+
+    state = projectReducer(state, deleteCableRoute('route-b'));
+
+    expect(state.current.routes).toHaveLength(0);
+    expect(state.current.topology.channels.map((channel) => channel.cableIds)).toEqual([[], []]);
   });
 
   it('clears all node connection point assignments without removing topology or presets', () => {

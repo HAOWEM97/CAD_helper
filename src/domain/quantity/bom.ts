@@ -86,6 +86,10 @@ function findMatchingEndItem(
 
   return (
     endItems.find((item) => {
+      if (item.acceptsAnyCable && item.quantity.mode === 'unlimited') {
+        return true;
+      }
+
       const spec = cableSpecsById.get(item.cableSpecId);
       return (spec?.model ?? item.cableSpecId) === startModel;
     }) ?? null

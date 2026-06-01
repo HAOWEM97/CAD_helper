@@ -8,6 +8,7 @@ export const selectSelectedRouteId = (state: RootState) => state.ui.selectedRout
 export const selectActiveDrawingNodeId = (state: RootState) => state.ui.activeDrawingNodeId;
 export const selectLeftPanelCollapsed = (state: RootState) => state.ui.leftPanelCollapsed;
 export const selectRightPanelCollapsed = (state: RootState) => state.ui.rightPanelCollapsed;
+export const selectRightPanelWidth = (state: RootState) => state.ui.rightPanelWidth;
 export const selectStatusBarState = (state: RootState) => ({
   activeStep: state.ui.activeStep,
   topologyToolMode: state.ui.topologyToolMode,

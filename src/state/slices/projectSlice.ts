@@ -690,7 +690,9 @@ const projectSlice = createSlice({
       }
 
       state.current.routes = [
-        ...state.current.routes.filter((item) => item.id !== route.id),
+        ...state.current.routes.filter(
+          (item) => item.id !== route.id && item.fromConnectionPointId !== route.fromConnectionPointId,
+        ),
         { ...route, status: 'valid' },
       ];
       rebuildChannelCableIdsFromRoutes(state.current);

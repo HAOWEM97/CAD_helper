@@ -3,6 +3,18 @@ import type { LayerVisibility, WorkflowStep } from '@/domain/project/types';
 
 export type TopologyToolMode = 'draw' | 'select';
 
+export const RIGHT_PANEL_WIDTH_DEFAULT = 320;
+export const RIGHT_PANEL_WIDTH_MIN = 300;
+export const RIGHT_PANEL_WIDTH_MAX = 640;
+
+export function clampRightPanelWidth(width: number) {
+  if (!Number.isFinite(width)) {
+    return RIGHT_PANEL_WIDTH_DEFAULT;
+  }
+
+  return Math.min(RIGHT_PANEL_WIDTH_MAX, Math.max(RIGHT_PANEL_WIDTH_MIN, Math.round(width)));
+}
+
 export type SelectedTopologyObject = {
   type: 'node' | 'channel';
   id: string;
@@ -21,6 +33,7 @@ export type UiState = {
   activeDrawingNodeId: string | null;
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  rightPanelWidth: number;
   orthogonalLock: boolean;
   snappingEnabled: boolean;
   zoomPercent: number;
@@ -36,6 +49,7 @@ export const createInitialUiState = (): UiState => ({
   activeDrawingNodeId: null,
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
+  rightPanelWidth: RIGHT_PANEL_WIDTH_DEFAULT,
   orthogonalLock: false,
   snappingEnabled: true,
   zoomPercent: 100,
@@ -87,6 +101,9 @@ const uiSlice = createSlice({
     toggleRightPanelCollapsed(state) {
       state.rightPanelCollapsed = !state.rightPanelCollapsed;
     },
+    setRightPanelWidth(state, action: PayloadAction<number>) {
+      state.rightPanelWidth = clampRightPanelWidth(action.payload);
+    },
     toggleLayer(state, action: PayloadAction<keyof LayerVisibility>) {
       const layer = action.payload;
       state.layerVisibility[layer] = !state.layerVisibility[layer];
@@ -112,6 +129,7 @@ export const {
   setMouseCadPosition,
   setSelectedRouteId,
   setSelectedTopologyObject,
+  setRightPanelWidth,
   setTopologyToolMode,
   setZoomPercent,
   toggleLayer,

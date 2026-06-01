@@ -67,6 +67,7 @@ export type CableSpec = {
 export type ConnectionCableItem = {
   id: string;
   cableSpecId: string;
+  acceptsAnyCable?: boolean;
   usage?: string;
   quantity: CableQuantity;
   connectionHeightMm: number;
