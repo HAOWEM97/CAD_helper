@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBomSummary, inferChannelSpecs } from '@/domain/quantity/bom';
+import { buildBomSummary, buildRouteDetail, inferChannelSpecs } from '@/domain/quantity/bom';
 import type { Project } from '@/domain/project/types';
 
 function createProject(): Project {
@@ -131,6 +131,16 @@ describe('quantity bom derivation', () => {
       expect.objectContaining({ category: 'duct', label: '1x2 排管', count: 1, totalLengthMm: 1000 }),
       expect.objectContaining({ category: 'tray', label: '50x50', count: 1, totalLengthMm: 1000 }),
     ]);
+  });
+
+  it('calculates route detail 2D horizontal length only', () => {
+    const project = createProject();
+
+    expect(buildRouteDetail(project, 'route-a')).toEqual({
+      routeId: 'route-a',
+      horizontalLengthMm: 2000,
+    });
+    expect(buildRouteDetail(project, 'missing-route')).toBeNull();
   });
 
   it('marks inferred channels without user depth while keeping bom derived', () => {

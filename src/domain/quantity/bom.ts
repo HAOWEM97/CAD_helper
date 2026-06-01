@@ -48,6 +48,11 @@ export type BomSummary = {
   missingDepthChannelIds: string[];
 };
 
+export type RouteDetail = {
+  routeId: string;
+  horizontalLengthMm: number;
+};
+
 const TRAY_FILL_RATE = 0.4;
 
 const STANDARD_TRAY_SIZES = [
@@ -106,6 +111,18 @@ function routeHorizontalLength(route: CableRoute, topology: TopologyGraph) {
     const channel = channelById.get(channelId);
     return sum + (channel ? channelLength(channel, topology) : 0);
   }, 0);
+}
+
+export function buildRouteDetail(project: Project, routeId: string): RouteDetail | null {
+  const route = project.routes.find((item) => item.id === routeId);
+  if (!route) {
+    return null;
+  }
+
+  return {
+    routeId: route.id,
+    horizontalLengthMm: routeHorizontalLength(route, project.topology),
+  };
 }
 
 function routeVerticalAllowance(

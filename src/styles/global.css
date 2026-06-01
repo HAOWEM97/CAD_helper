@@ -1093,6 +1093,7 @@ button {
   background: #ffffff;
   color: var(--ink);
   text-align: left;
+  cursor: pointer;
 }
 
 .route-row strong {
@@ -1149,6 +1150,36 @@ button {
 .route-record-actions strong {
   min-width: 36px;
   text-align: center;
+}
+
+.route-record-detail {
+  display: grid;
+  gap: 8px;
+  margin-left: 8px;
+  border-left: 2px solid var(--accent-soft);
+  padding: 8px 0 8px 10px;
+}
+
+.route-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fbfcf7;
+  font-size: 12px;
+}
+
+.route-detail-row span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.route-detail-row strong {
+  color: var(--accent-strong);
+  white-space: nowrap;
 }
 
 .route-inline-editor {

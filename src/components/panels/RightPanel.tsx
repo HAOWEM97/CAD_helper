@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
 import { parseCableQuantity, parseDiameterText } from '@/domain/library/defaultDeviceLibrary';
+import { buildRouteDetail } from '@/domain/quantity/bom';
 import type {
   CableSpec,
   ChannelCategory,
@@ -30,6 +31,7 @@ import {
   selectConnectionPointPresets,
   selectDeviceInstances,
   selectDeviceTypePresets,
+  selectProject,
   selectProjectImage,
   selectRoutes,
   selectTopology,
@@ -1153,6 +1155,7 @@ function DeviceConnectionEditor() {
 
 function RoutingTodoPanel() {
   const dispatch = useAppDispatch();
+  const project = useAppSelector(selectProject);
   const topology = useAppSelector(selectTopology);
   const deviceInstances = useAppSelector(selectDeviceInstances);
   const connectionPoints = useAppSelector(selectConnectionPoints);
@@ -1161,6 +1164,7 @@ function RoutingTodoPanel() {
   const [activeStartId, setActiveStartId] = useState<string | null>(null);
   const [targetId, setTargetId] = useState('');
   const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
+  const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
   const [routeError, setRouteError] = useState('');
   const activeStart = connectionPoints.find((point) => point.id === activeStartId) ?? null;
   const routeFromIds = new Set(routes.map((route) => route.fromConnectionPointId));
@@ -1314,57 +1318,86 @@ function RoutingTodoPanel() {
         {routes.map((route) => {
           const from = connectionPoints.find((point) => point.id === route.fromConnectionPointId);
           const to = connectionPoints.find((point) => point.id === route.toConnectionPointId);
+          const expanded = expandedRouteId === route.id;
+          const routeDetail = expanded ? buildRouteDetail(project, route.id) : null;
           return (
-            <div
-              className={route.status === 'valid' ? 'route-row route-record' : 'route-row route-record stale'}
-              key={route.id}
-              onClick={() => dispatch(setSelectedRouteId(route.id))}
-            >
-              <div className="route-record-main">
-                <span>
-                  <b>起点：</b>
-                  {from ? connectionLabel(from, deviceInstances) : '未知起点'}
-                </span>
-                <span>
-                  <b>终点：</b>
-                  {to ? connectionLabel(to, deviceInstances) : '未知终点'}
-                </span>
-              </div>
-              <div className="route-record-actions">
-                <strong>{route.status === 'valid' ? '有效' : '需重算'}</strong>
-                <button
-                  className="ghost-button compact"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (!from || !to) {
-                      window.alert('这条路由的起点或终点已不存在，无法重算。');
-                      return;
-                    }
-                    selectStart(from.id, to.id, route.id);
-                  }}
-                  type="button"
-                >
-                  重算
-                </button>
-                <button
-                  className="danger-button compact"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (window.confirm('确定删除这条路由吗？通道和接线孔不会删除。')) {
-                      dispatch(deleteCableRoute(route.id));
-                      dispatch(setSelectedRouteId(null));
-                      if (editingRouteId === route.id) {
-                        setEditingRouteId(null);
-                        setActiveStartId(null);
-                        setTargetId('');
+            <div className="route-entry" key={route.id}>
+              <div
+                className={[
+                  route.status === 'valid' ? 'route-row route-record' : 'route-row route-record stale',
+                  expanded ? 'active' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => {
+                  dispatch(setSelectedRouteId(route.id));
+                  setExpandedRouteId(expanded ? null : route.id);
+                }}
+              >
+                <div className="route-record-main">
+                  <span>
+                    <b>起点：</b>
+                    {from ? connectionLabel(from, deviceInstances) : '未知起点'}
+                  </span>
+                  <span>
+                    <b>终点：</b>
+                    {to ? connectionLabel(to, deviceInstances) : '未知终点'}
+                  </span>
+                </div>
+                <div className="route-record-actions">
+                  <strong>{route.status === 'valid' ? '有效' : '需重算'}</strong>
+                  <button
+                    className="ghost-button compact"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (!from || !to) {
+                        window.alert('这条路由的起点或终点已不存在，无法重算。');
+                        return;
                       }
-                    }
-                  }}
-                  type="button"
-                >
-                  删除
-                </button>
+                      selectStart(from.id, to.id, route.id);
+                    }}
+                    type="button"
+                  >
+                    重算
+                  </button>
+                  <button
+                    className="danger-button compact"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (window.confirm('确定删除这条路由吗？通道和接线孔不会删除。')) {
+                        dispatch(deleteCableRoute(route.id));
+                        dispatch(setSelectedRouteId(null));
+                        if (expandedRouteId === route.id) {
+                          setExpandedRouteId(null);
+                        }
+                        if (editingRouteId === route.id) {
+                          setEditingRouteId(null);
+                          setActiveStartId(null);
+                          setTargetId('');
+                        }
+                      }
+                    }}
+                    type="button"
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
+              {expanded && (
+                <div className="route-record-detail">
+                  {route.status !== 'valid' && (
+                    <div className="locked-note">该路由需重算，当前长度基于旧路径暂算。</div>
+                  )}
+                  {routeDetail ? (
+                    <div className="route-detail-row">
+                      <span>二维平面路由长度</span>
+                      <strong>{formatMeters(routeDetail.horizontalLengthMm)}</strong>
+                    </div>
+                  ) : (
+                    <div className="locked-note">这条路由已不存在，无法计算长度。</div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
