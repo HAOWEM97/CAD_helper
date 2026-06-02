@@ -16,6 +16,7 @@ import type {
   CableSpec,
   ChannelCategory,
   ChannelSegment,
+  ChannelSpec,
   ConnectionPointPreset,
   DeviceConnectionPoint,
   DeviceInstance,
@@ -420,10 +421,40 @@ const projectSlice = createSlice({
         }
 
         channel.category = action.payload.category;
+        if (channel.finalSpec?.kind && channel.finalSpec.kind !== action.payload.category) {
+          delete channel.finalSpec;
+          delete channel.specConfirmedAt;
+          delete channel.specLoadSignature;
+        }
         updatedChannelIds.add(channel.id);
       }
 
       markRoutesUsingChannelsForRecalculation(state.current, updatedChannelIds);
+    },
+    confirmTopologyChannelSpec(
+      state,
+      action: PayloadAction<{ channelId: string; spec: ChannelSpec; loadSignature: string }>,
+    ) {
+      const channel = state.current.topology.channels.find(
+        (item) => item.id === action.payload.channelId,
+      );
+      if (!channel) {
+        return;
+      }
+
+      channel.finalSpec = action.payload.spec;
+      channel.specLoadSignature = action.payload.loadSignature;
+      channel.specConfirmedAt = new Date().toISOString();
+    },
+    clearTopologyChannelSpec(state, action: PayloadAction<string>) {
+      const channel = state.current.topology.channels.find((item) => item.id === action.payload);
+      if (!channel) {
+        return;
+      }
+
+      delete channel.finalSpec;
+      delete channel.specConfirmedAt;
+      delete channel.specLoadSignature;
     },
     updateTopologyChannelDepth(
       state,
@@ -707,7 +738,9 @@ const projectSlice = createSlice({
 export const {
   addTopologyChannel,
   addTopologyNode,
+  clearTopologyChannelSpec,
   clearConnectionPointAssignments,
+  confirmTopologyChannelSpec,
   createCableRoute,
   deleteCableRoute,
   deleteCableSpec,

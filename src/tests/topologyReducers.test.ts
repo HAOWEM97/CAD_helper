@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import projectReducer, {
   addTopologyChannel,
   addTopologyNode,
+  clearTopologyChannelSpec,
   clearConnectionPointAssignments,
+  confirmTopologyChannelSpec,
   createCableRoute,
   createDefaultDeviceName,
   deleteCableSpec,
@@ -132,6 +134,41 @@ describe('topology reducers', () => {
     );
 
     expect(state.current.topology.channels[0].depthMm).toBeUndefined();
+  });
+
+  it('stores confirmed channel spec independently from editable depth', () => {
+    let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
+    state = projectReducer(
+      state,
+      addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
+    );
+
+    state = projectReducer(
+      state,
+      confirmTopologyChannelSpec({
+        channelId: 'channel-a',
+        loadSignature: 'signature-a',
+        spec: { kind: 'tray', source: 'standard', label: '200x150mm', widthMm: 200, heightMm: 150 },
+      }),
+    );
+    state = projectReducer(
+      state,
+      updateTopologyChannelDepth({ channelId: 'channel-a', depthMm: 450 }),
+    );
+
+    expect(state.current.topology.channels[0]).toEqual(
+      expect.objectContaining({
+        depthMm: 450,
+        specLoadSignature: 'signature-a',
+        finalSpec: expect.objectContaining({ label: '200x150mm' }),
+      }),
+    );
+
+    state = projectReducer(state, clearTopologyChannelSpec('channel-a'));
+
+    expect(state.current.topology.channels[0].finalSpec).toBeUndefined();
+    expect(state.current.topology.channels[0].depthMm).toBe(450);
   });
 
   it('keeps cable models unique and blocks deleting referenced cables', () => {

@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
 import { parseCableQuantity, parseDiameterText } from '@/domain/library/defaultDeviceLibrary';
-import { buildRouteDetail } from '@/domain/quantity/bom';
+import {
+  buildRouteDetail,
+  createCustomDuctSpec,
+  createCustomTraySpec,
+  getSelectableSpecs,
+  specKey,
+  type CableClass,
+  type ChannelCableLoad,
+} from '@/domain/quantity/bom';
 import type {
   CableSpec,
   ChannelCategory,
@@ -44,6 +52,8 @@ import {
 } from '@/state/selectors/uiSelectors';
 import {
   clearConnectionPointAssignments,
+  clearTopologyChannelSpec,
+  confirmTopologyChannelSpec,
   createCableRoute,
   createDefaultCustomConnectionPointName,
   createDefaultDeviceName,
@@ -301,6 +311,47 @@ function specText(spec: ChannelSpec | null | undefined) {
   return spec?.label ?? '';
 }
 
+function formatArea(mm2: number) {
+  return `${mm2.toFixed(1)} mm²`;
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return '无效';
+  }
+
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+const cableClassLabels: Record<CableClass, string> = {
+  communication: '通信线',
+  power: '配电线',
+};
+
+function loadRowKey(load: ChannelCableLoad) {
+  return [load.model, load.usage, load.cableClass, load.diameterMm].join('|');
+}
+
+function summarizeCableLoads(loads: ChannelCableLoad[]) {
+  const summaryByKey = new Map<string, ChannelCableLoad>();
+
+  for (const load of loads) {
+    const key = [load.model, load.usage, load.diameterMm, load.cableClass].join('|');
+    const existing = summaryByKey.get(key);
+    summaryByKey.set(key, {
+      ...load,
+      quantity: (existing?.quantity ?? 0) + load.quantity,
+      areaMm2: (existing?.areaMm2 ?? 0) + load.areaMm2,
+    });
+  }
+
+  return Array.from(summaryByKey.values()).sort(
+    (a, b) =>
+      a.model.localeCompare(b.model, 'zh-Hans-CN') ||
+      a.usage.localeCompare(b.usage, 'zh-Hans-CN'),
+  );
+}
+
 function ChannelEditor() {
   const dispatch = useAppDispatch();
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
@@ -325,7 +376,7 @@ function ChannelEditor() {
   const targetChannelIds = applyScope === 'connected' ? connectedChannelIds : [channel.id];
   const affectedCount = targetChannelIds.length;
   const inferredSpec = bomSummary.inferredChannelSpecs.find((item) => item.channelId === channel.id);
-  const depthEditable = Boolean(inferredSpec?.spec);
+  const depthEditable = Boolean(inferredSpec?.effectiveSpec);
 
   return (
     <div className="property-form">
@@ -368,8 +419,8 @@ function ChannelEditor() {
       </div>
 
       <label>
-        <span>规格</span>
-        <input disabled placeholder="等待有效路由" value={specText(inferredSpec?.spec)} />
+        <span>有效规格</span>
+        <input disabled placeholder="等待有效路由" value={specText(inferredSpec?.effectiveSpec)} />
       </label>
 
       <label>
@@ -391,7 +442,7 @@ function ChannelEditor() {
 
       <div className={depthEditable ? 'scope-note' : 'locked-note'}>
         {depthEditable
-          ? `已按通道内 ${inferredSpec?.cableCount ?? 0} 根线缆推演规格，深度修改会立即刷新 BOM。`
+          ? `${inferredSpec?.confirmed ? '规格已确认' : inferredSpec?.needsReview ? '规格需复核' : '规格待确认'}，深度修改会立即刷新 BOM。`
           : '当前通道没有有效路由线缆，暂不能填写敷设深度。'}
       </div>
     </div>
@@ -1411,6 +1462,61 @@ function QuantityPanel() {
   const topology = useAppSelector(selectTopology);
   const bomSummary = useAppSelector(selectBomSummary);
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
+  const [expandedChannelId, setExpandedChannelId] = useState<string | null>(null);
+  const [customTrayDrafts, setCustomTrayDrafts] = useState<
+    Record<string, { widthMm: string; heightMm: string; powerWidthMm: string; communicationWidthMm: string }>
+  >({});
+  const [customDuctDrafts, setCustomDuctDrafts] = useState<
+    Record<string, { DN125: string; DN100: string; DN32: string }>
+  >({});
+
+  function channelStatusText(inferred: (typeof bomSummary.inferredChannelSpecs)[number]) {
+    if (inferred.confirmed) {
+      return '已确认';
+    }
+    if (inferred.needsReview) {
+      return '需复核';
+    }
+    return inferred.effectiveSpec ? '待确认' : '无有效线缆';
+  }
+
+  function commitSpec(channelId: string, spec: ChannelSpec, loadSignature: string) {
+    dispatch(confirmTopologyChannelSpec({ channelId, spec, loadSignature }));
+  }
+
+  function highlightChannel(channelId: string) {
+    dispatch(setSelectedTopologyObject({ type: 'channel', id: channelId }));
+  }
+
+  function selectChannel(channelId: string) {
+    highlightChannel(channelId);
+    setExpandedChannelId(channelId);
+  }
+
+  function getTrayDraft(channelId: string) {
+    return (
+      customTrayDrafts[channelId] ?? {
+        widthMm: '',
+        heightMm: '150',
+        powerWidthMm: '',
+        communicationWidthMm: '',
+      }
+    );
+  }
+
+  function getDuctDraft(channelId: string) {
+    return customDuctDrafts[channelId] ?? { DN125: '', DN100: '', DN32: '' };
+  }
+
+  function trayDraftIsValid(channelId: string) {
+    const draft = getTrayDraft(channelId);
+    return Number(draft.widthMm) > 0 && Number(draft.heightMm) > 0;
+  }
+
+  function ductDraftIsValid(channelId: string) {
+    const draft = getDuctDraft(channelId);
+    return Number(draft.DN125 || 0) + Number(draft.DN100 || 0) + Number(draft.DN32 || 0) > 0;
+  }
 
   return (
     <div className="routing-panel">
@@ -1434,35 +1540,279 @@ function QuantityPanel() {
               const spec = inferred?.spec ?? null;
               const selected =
                 selectedObject?.type === 'channel' && selectedObject.id === channel.id;
+              const options = getSelectableSpecs(channel.category);
+              const finalSpecKey = specKey(inferred?.finalSpec);
+              const finalSpecIsStandard = options.some((option) => specKey(option) === finalSpecKey);
+              const statusText = inferred ? channelStatusText(inferred) : '无有效线缆';
+              const expanded = expandedChannelId === channel.id;
+              const evaluation = inferred?.evaluation;
+              const hasWarnings = Boolean(evaluation?.warnings.length);
 
               return (
-                <div className={selected ? 'quantity-channel-row selected' : 'quantity-channel-row'} key={channel.id}>
-                  <button
-                    className="quantity-channel-main"
-                    onClick={() =>
-                      dispatch(setSelectedTopologyObject({ type: 'channel', id: channel.id }))
-                    }
-                    type="button"
-                  >
-                    <strong>C{String(index + 1).padStart(3, '0')}</strong>
-                    <span>{channelCategoryLabels[channel.category]}</span>
-                    <em>{spec?.label ?? '无有效线缆'}</em>
-                  </button>
-                  <input
-                    disabled={!spec}
-                    min="0"
-                    onChange={(event) =>
-                      dispatch(
-                        updateTopologyChannelDepth({
-                          channelId: channel.id,
-                          depthMm: parseNumberInput(event.target.value),
-                        }),
-                      )
-                    }
-                    placeholder="深度 mm"
-                    type="number"
-                    value={channel.depthMm === undefined ? '' : String(channel.depthMm)}
-                  />
+                <div
+                  className={selected ? 'quantity-channel-row selected' : 'quantity-channel-row'}
+                  key={channel.id}
+                  onPointerDownCapture={() => highlightChannel(channel.id)}
+                >
+                  <div className="quantity-channel-top">
+                    <button
+                      className="quantity-channel-main"
+                      onClick={() => selectChannel(channel.id)}
+                      type="button"
+                    >
+                      <strong>C{String(index + 1).padStart(3, '0')}</strong>
+                      <span>{channelCategoryLabels[channel.category]}</span>
+                      <em>{inferred?.effectiveSpec?.label ?? '无有效线缆'}</em>
+                      <b
+                        className={[
+                          'quantity-status',
+                          inferred?.confirmed ? 'confirmed' : '',
+                          inferred?.needsReview || hasWarnings ? 'warning' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        {statusText}
+                      </b>
+                    </button>
+
+                    <input
+                      disabled={!inferred?.effectiveSpec}
+                      min="0"
+                      onChange={(event) =>
+                        dispatch(
+                          updateTopologyChannelDepth({
+                            channelId: channel.id,
+                            depthMm: parseNumberInput(event.target.value),
+                          }),
+                        )
+                      }
+                      placeholder="深度 mm"
+                      type="number"
+                      value={channel.depthMm === undefined ? '' : String(channel.depthMm)}
+                    />
+                  </div>
+
+                  {inferred?.effectiveSpec && (
+                    <div className="quantity-channel-controls">
+                      <span>推荐：{inferred.spec?.label ?? '无'}</span>
+                      <select
+                        onChange={(event) => {
+                          const selectedSpec = options.find(
+                            (option) => specKey(option) === event.target.value,
+                          );
+                          if (selectedSpec && inferred) {
+                            commitSpec(channel.id, selectedSpec, inferred.loadSignature);
+                          }
+                        }}
+                        value={finalSpecKey || ''}
+                      >
+                        <option value="">选择最终规格</option>
+                        {options.map((option) => (
+                          <option key={specKey(option)} value={specKey(option)}>
+                            {option.label}
+                          </option>
+                        ))}
+                        {inferred.finalSpec && !finalSpecIsStandard && (
+                          <option value={finalSpecKey}>{inferred.finalSpec.label}</option>
+                        )}
+                      </select>
+                      <button
+                        className="ghost-button compact"
+                        disabled={!inferred.spec}
+                        onClick={() => {
+                          if (inferred.spec) {
+                            commitSpec(channel.id, inferred.spec, inferred.loadSignature);
+                          }
+                        }}
+                        type="button"
+                      >
+                        确认推荐
+                      </button>
+                      <button
+                        className="ghost-button compact"
+                        onClick={() => dispatch(clearTopologyChannelSpec(channel.id))}
+                        type="button"
+                      >
+                        清除
+                      </button>
+                      <button
+                        className="ghost-button compact"
+                        onClick={() => setExpandedChannelId(expanded ? null : channel.id)}
+                        type="button"
+                      >
+                        {expanded ? '收起' : '展开'}
+                      </button>
+                    </div>
+                  )}
+
+                  {evaluation && evaluation.utilizationRows.length > 0 && (
+                    <div className="utilization-list">
+                      {evaluation.utilizationRows.map((row) => (
+                        <div className={row.ok ? 'utilization-row' : 'utilization-row warning'} key={row.label}>
+                          <span>{row.label}</span>
+                          <em>{cableClassLabels[row.cableClass]}</em>
+                          <strong>{formatPercent(row.utilizationRatio)}</strong>
+                          <b>上限 {formatPercent(row.limitRatio)}</b>
+                          {row.cableItems.length > 0 && (
+                            <i>
+                              {row.cableItems
+                                .map(
+                                  (item) =>
+                                    `${item.usage ? `${item.usage} / ` : ''}${item.model} x ${item.quantity}`,
+                                )
+                                .join('；')}
+                            </i>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {evaluation?.warnings.map((warning) => (
+                    <div className="locked-note" key={warning}>
+                      {warning}
+                    </div>
+                  ))}
+
+                  {expanded && inferred && (
+                    <div className="channel-detail-panel">
+                      <div className="panel-heading compact-heading">
+                        <h2>线缆明细</h2>
+                        <span>总截面 {formatArea(inferred.cableAreaMm2)}</span>
+                      </div>
+                      {inferred.cableLoads.length === 0 ? (
+                        <div className="empty-state">
+                          <strong>暂无有效线缆</strong>
+                        </div>
+                      ) : (
+                        <div className="channel-cable-table">
+                          {summarizeCableLoads(inferred.cableLoads).map((load) => (
+                            <div className="channel-cable-row" key={loadRowKey(load)}>
+                              <strong>{load.model}</strong>
+                              <span>{load.usage || cableClassLabels[load.cableClass]}</span>
+                              <em>{load.quantity} 根</em>
+                              <b>外径 {load.diameterMm.toFixed(1)} mm</b>
+                              <i>{formatArea(load.areaMm2)}</i>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {channel.category === 'tray' ? (
+                        <div className="custom-spec-form">
+                          <strong>自定义线槽</strong>
+                          <input
+                            onChange={(event) =>
+                              setCustomTrayDrafts((current) => ({
+                                ...current,
+                                [channel.id]: { ...getTrayDraft(channel.id), widthMm: event.target.value },
+                              }))
+                            }
+                            placeholder="宽 mm"
+                            type="number"
+                            value={getTrayDraft(channel.id).widthMm}
+                          />
+                          <input
+                            onChange={(event) =>
+                              setCustomTrayDrafts((current) => ({
+                                ...current,
+                                [channel.id]: { ...getTrayDraft(channel.id), heightMm: event.target.value },
+                              }))
+                            }
+                            placeholder="高 mm"
+                            type="number"
+                            value={getTrayDraft(channel.id).heightMm}
+                          />
+                          <input
+                            onChange={(event) =>
+                              setCustomTrayDrafts((current) => ({
+                                ...current,
+                                [channel.id]: { ...getTrayDraft(channel.id), powerWidthMm: event.target.value },
+                              }))
+                            }
+                            placeholder="配电仓宽"
+                            type="number"
+                            value={getTrayDraft(channel.id).powerWidthMm}
+                          />
+                          <input
+                            onChange={(event) =>
+                              setCustomTrayDrafts((current) => ({
+                                ...current,
+                                [channel.id]: {
+                                  ...getTrayDraft(channel.id),
+                                  communicationWidthMm: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="通信仓宽"
+                            type="number"
+                            value={getTrayDraft(channel.id).communicationWidthMm}
+                          />
+                          <button
+                            className="primary-button compact"
+                            disabled={!trayDraftIsValid(channel.id)}
+                            onClick={() => {
+                              const draft = getTrayDraft(channel.id);
+                              const powerWidthMm = parseNumberInput(draft.powerWidthMm);
+                              const communicationWidthMm = parseNumberInput(draft.communicationWidthMm);
+                              commitSpec(
+                                channel.id,
+                                createCustomTraySpec({
+                                  widthMm: Number(draft.widthMm),
+                                  heightMm: Number(draft.heightMm),
+                                  powerWidthMm: powerWidthMm ?? undefined,
+                                  communicationWidthMm: communicationWidthMm ?? undefined,
+                                }),
+                                inferred.loadSignature,
+                              );
+                            }}
+                            type="button"
+                          >
+                            保存自定义
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="custom-spec-form">
+                          <strong>自定义排管</strong>
+                          {(['DN125', 'DN100', 'DN32'] as const).map((size) => (
+                            <input
+                              key={size}
+                              min="0"
+                              onChange={(event) =>
+                                setCustomDuctDrafts((current) => ({
+                                  ...current,
+                                  [channel.id]: { ...getDuctDraft(channel.id), [size]: event.target.value },
+                                }))
+                              }
+                              placeholder={`${size} 数量`}
+                              type="number"
+                              value={getDuctDraft(channel.id)[size]}
+                            />
+                          ))}
+                          <button
+                            className="primary-button compact"
+                            disabled={!ductDraftIsValid(channel.id)}
+                            onClick={() => {
+                              const draft = getDuctDraft(channel.id);
+                              commitSpec(
+                                channel.id,
+                                createCustomDuctSpec({
+                                  DN125: Number(draft.DN125 || 0),
+                                  DN100: Number(draft.DN100 || 0),
+                                  DN32: Number(draft.DN32 || 0),
+                                }),
+                                inferred.loadSignature,
+                              );
+                            }}
+                            type="button"
+                          >
+                            保存自定义
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

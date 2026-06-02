@@ -18,10 +18,28 @@ export type ImageMetadata = {
 
 export type ChannelCategory = 'tray' | 'duct';
 
+export type DuctSize = 'DN125' | 'DN100' | 'DN32';
+
+export type DuctSpecItem = {
+  size: DuctSize;
+  count: number;
+  material: 'CPVC' | 'steel';
+  nominalDiameterMm: number;
+  wallThicknessMm?: number;
+  innerDiameterMm: number;
+};
+
 export type ChannelSpec = {
+  kind?: ChannelCategory;
+  source?: 'standard' | 'custom';
   label: string;
   widthMm?: number;
   heightMm?: number;
+  divider?: {
+    powerWidthMm: number;
+    communicationWidthMm: number;
+  };
+  ducts?: DuctSpecItem[];
   rows?: number;
   columns?: number;
 };
@@ -38,6 +56,9 @@ export type ChannelSegment = {
   category: ChannelCategory;
   depthMm?: number;
   recommendedSpec?: ChannelSpec;
+  finalSpec?: ChannelSpec;
+  specConfirmedAt?: string;
+  specLoadSignature?: string;
   cableIds: string[];
 };
 

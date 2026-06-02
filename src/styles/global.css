@@ -195,6 +195,7 @@ button {
 }
 
 .ghost-button.compact,
+.primary-button.compact,
 .danger-button.compact {
   min-height: 30px;
   padding: 0 10px;
@@ -491,11 +492,6 @@ button {
   stroke-dasharray: 12 7;
 }
 
-.topology-channel.selected {
-  stroke: #e26d2d;
-  stroke-width: 7;
-}
-
 .topology-channel.route-highlight {
   stroke: #d34b83;
   stroke-width: 8;
@@ -503,6 +499,12 @@ button {
 
 .topology-channel.route-highlight.topology-channel-duct {
   stroke-dasharray: 14 6;
+}
+
+.topology-channel.selected,
+.topology-channel.route-highlight.selected {
+  stroke: #e26d2d;
+  stroke-width: 10;
 }
 
 .topology-preview {
@@ -1274,18 +1276,21 @@ button {
   line-height: 1.45;
 }
 
-.quantity-channel-row {
-  grid-template-columns: minmax(0, 1fr) 82px;
-}
-
 .quantity-channel-row.selected {
   border-color: var(--accent);
   background: #eef8f3;
 }
 
+.quantity-channel-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  gap: 8px;
+  align-items: center;
+}
+
 .quantity-channel-main {
   display: grid;
-  grid-template-columns: 46px 42px minmax(0, 1fr);
+  grid-template-columns: 46px 42px minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -1297,6 +1302,27 @@ button {
 }
 
 .quantity-channel-main strong {
+  color: var(--accent-strong);
+}
+
+.quantity-channel-main b,
+.quantity-status {
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #edf2ec;
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.quantity-status.warning {
+  background: #fff7e8;
+  color: var(--warning);
+}
+
+.quantity-status.confirmed {
+  background: #dff3e9;
   color: var(--accent-strong);
 }
 
@@ -1318,6 +1344,108 @@ button {
   background: #ffffff;
   color: var(--ink);
   font-size: 12px;
+}
+
+.quantity-channel-controls,
+.utilization-list,
+.channel-detail-panel,
+.channel-cable-table,
+.custom-spec-form {
+  display: grid;
+  gap: 8px;
+}
+
+.quantity-channel-controls {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.quantity-channel-controls span {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quantity-channel-controls select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.utilization-row,
+.channel-cable-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 6px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 7px;
+  background: #f6f8f4;
+  color: var(--ink);
+}
+
+.utilization-row.warning {
+  background: #fff7e8;
+  color: var(--warning);
+}
+
+.utilization-row span,
+.channel-cable-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.utilization-row em,
+.utilization-row b,
+.utilization-row i,
+.channel-cable-row span,
+.channel-cable-row em,
+.channel-cable-row b,
+.channel-cable-row i {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.utilization-row i {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.utilization-row strong {
+  color: var(--accent-strong);
+}
+
+.channel-detail-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.channel-cable-row {
+  grid-template-columns: minmax(0, 1fr) minmax(58px, auto) auto auto auto;
+}
+
+.custom-spec-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+}
+
+.custom-spec-form strong {
+  grid-column: 1 / -1;
+  color: var(--accent-strong);
+}
+
+.custom-spec-form button {
+  grid-column: 1 / -1;
 }
 
 .quantity-channel-row input:disabled {
