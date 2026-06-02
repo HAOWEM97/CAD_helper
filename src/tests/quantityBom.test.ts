@@ -141,6 +141,20 @@ describe('quantity bom derivation', () => {
     ]);
   });
 
+  it('uses underground negative channel heights in cable length calculation', () => {
+    const project = createProject();
+    project.topology.channels[0].depthMm = -1190;
+    project.topology.channels[1].depthMm = -500;
+
+    expect(buildBomSummary(project).cableRows).toEqual([
+      expect.objectContaining({
+        cableSpecId: 'spec-a',
+        quantity: 2,
+        totalLengthMm: 12760,
+      }),
+    ]);
+  });
+
   it('calculates route detail 2D horizontal length only', () => {
     const project = createProject();
 

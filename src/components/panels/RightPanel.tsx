@@ -5,6 +5,7 @@ import {
   buildRouteDetail,
   createCustomDuctSpec,
   createCustomTraySpec,
+  defaultDepthForSpec,
   getSelectableSpecs,
   specKey,
   type CableClass,
@@ -52,7 +53,6 @@ import {
 } from '@/state/selectors/uiSelectors';
 import {
   clearConnectionPointAssignments,
-  clearTopologyChannelSpec,
   confirmTopologyChannelSpec,
   createCableRoute,
   createDefaultCustomConnectionPointName,
@@ -424,17 +424,16 @@ function ChannelEditor() {
       </label>
 
       <label>
-        <span>敷设深度</span>
+        <span>通道高度</span>
         <input
           disabled={!depthEditable}
-          min="0"
           onChange={(event) => {
             const parsed = parseNumberInput(event.target.value);
             for (const channelId of targetChannelIds) {
               dispatch(updateTopologyChannelDepth({ channelId, depthMm: parsed }));
             }
           }}
-          placeholder="规格推演后可编辑"
+          placeholder="规格推演后可编辑，地下填负数"
           type="number"
           value={channel.depthMm === undefined ? '' : String(channel.depthMm)}
         />
@@ -1470,27 +1469,45 @@ function QuantityPanel() {
     Record<string, { DN125: string; DN100: string; DN32: string }>
   >({});
 
-  function channelStatusText(inferred: (typeof bomSummary.inferredChannelSpecs)[number]) {
-    if (inferred.confirmed) {
-      return '已确认';
-    }
-    if (inferred.needsReview) {
-      return '需复核';
-    }
-    return inferred.effectiveSpec ? '待确认' : '无有效线缆';
-  }
-
   function commitSpec(channelId: string, spec: ChannelSpec, loadSignature: string) {
-    dispatch(confirmTopologyChannelSpec({ channelId, spec, loadSignature }));
+    dispatch(
+      confirmTopologyChannelSpec({
+        channelId,
+        spec,
+        loadSignature,
+        defaultDepthMm: defaultDepthForSpec(spec),
+      }),
+    );
   }
 
   function highlightChannel(channelId: string) {
     dispatch(setSelectedTopologyObject({ type: 'channel', id: channelId }));
   }
 
+  function applyDefaultDepthIfEmpty(channelId: string) {
+    const channel = topology.channels.find((item) => item.id === channelId);
+    const inferred = bomSummary.inferredChannelSpecs.find((item) => item.channelId === channelId);
+    const defaultDepthMm = defaultDepthForSpec(inferred?.effectiveSpec);
+    if (
+      channel?.depthMm === undefined &&
+      typeof defaultDepthMm === 'number' &&
+      Number.isFinite(defaultDepthMm)
+    ) {
+      dispatch(updateTopologyChannelDepth({ channelId, depthMm: defaultDepthMm }));
+    }
+  }
+
   function selectChannel(channelId: string) {
     highlightChannel(channelId);
-    setExpandedChannelId(channelId);
+    applyDefaultDepthIfEmpty(channelId);
+    setExpandedChannelId((current) => (current === channelId ? null : channelId));
+  }
+
+  function shouldIgnoreChannelRowClick(event: { target: EventTarget | null }) {
+    return (
+      event.target instanceof HTMLElement &&
+      Boolean(event.target.closest('select, input, button, .custom-spec-form'))
+    );
   }
 
   function getTrayDraft(channelId: string) {
@@ -1537,48 +1554,80 @@ function QuantityPanel() {
               const inferred = bomSummary.inferredChannelSpecs.find(
                 (item) => item.channelId === channel.id,
               );
-              const spec = inferred?.spec ?? null;
               const selected =
                 selectedObject?.type === 'channel' && selectedObject.id === channel.id;
               const options = getSelectableSpecs(channel.category);
-              const finalSpecKey = specKey(inferred?.finalSpec);
-              const finalSpecIsStandard = options.some((option) => specKey(option) === finalSpecKey);
-              const statusText = inferred ? channelStatusText(inferred) : '无有效线缆';
+              const selectedSpecKey = specKey(inferred?.effectiveSpec);
+              const selectedSpecIsStandard = options.some(
+                (option) => specKey(option) === selectedSpecKey,
+              );
               const expanded = expandedChannelId === channel.id;
               const evaluation = inferred?.evaluation;
               const hasWarnings = Boolean(evaluation?.warnings.length);
+              const maxUtilizationRatio = evaluation?.utilizationRows.length
+                ? evaluation.maxUtilizationRatio
+                : null;
+              const rowClassName = [
+                'quantity-channel-row',
+                selected ? 'selected' : '',
+                expanded ? 'expanded' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
 
               return (
                 <div
-                  className={selected ? 'quantity-channel-row selected' : 'quantity-channel-row'}
+                  aria-expanded={expanded}
+                  className={rowClassName}
                   key={channel.id}
+                  onClick={(event) => {
+                    if (!shouldIgnoreChannelRowClick(event)) {
+                      selectChannel(channel.id);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !shouldIgnoreChannelRowClick(event)) {
+                      event.preventDefault();
+                      selectChannel(channel.id);
+                    }
+                  }}
                   onPointerDownCapture={() => highlightChannel(channel.id)}
+                  role="button"
+                  tabIndex={0}
                 >
-                  <div className="quantity-channel-top">
-                    <button
-                      className="quantity-channel-main"
-                      onClick={() => selectChannel(channel.id)}
-                      type="button"
-                    >
+                  <div className="quantity-channel-compact">
+                    <div className="quantity-channel-summary">
                       <strong>C{String(index + 1).padStart(3, '0')}</strong>
                       <span>{channelCategoryLabels[channel.category]}</span>
-                      <em>{inferred?.effectiveSpec?.label ?? '无有效线缆'}</em>
-                      <b
-                        className={[
-                          'quantity-status',
-                          inferred?.confirmed ? 'confirmed' : '',
-                          inferred?.needsReview || hasWarnings ? 'warning' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                      >
-                        {statusText}
-                      </b>
-                    </button>
+                    </div>
+
+                    <select
+                      className="quantity-channel-spec-select"
+                      disabled={!inferred?.effectiveSpec}
+                      onChange={(event) => {
+                        const selectedSpec = options.find(
+                          (option) => specKey(option) === event.target.value,
+                        );
+                        if (selectedSpec && inferred) {
+                          commitSpec(channel.id, selectedSpec, inferred.loadSignature);
+                        }
+                      }}
+                      value={selectedSpecKey || ''}
+                    >
+                      {!inferred?.effectiveSpec && <option value="">无有效线缆</option>}
+                      {options.map((option) => (
+                        <option key={specKey(option)} value={specKey(option)}>
+                          {option.label}
+                        </option>
+                      ))}
+                      {inferred?.effectiveSpec && !selectedSpecIsStandard && (
+                        <option value={selectedSpecKey}>{inferred.effectiveSpec.label}</option>
+                      )}
+                    </select>
 
                     <input
+                      className="quantity-channel-depth"
                       disabled={!inferred?.effectiveSpec}
-                      min="0"
                       onChange={(event) =>
                         dispatch(
                           updateTopologyChannelDepth({
@@ -1587,96 +1636,57 @@ function QuantityPanel() {
                           }),
                         )
                       }
-                      placeholder="深度 mm"
+                      placeholder="高度 mm"
                       type="number"
                       value={channel.depthMm === undefined ? '' : String(channel.depthMm)}
                     />
+
+                    <span
+                      className={[
+                        'quantity-channel-utilization',
+                        hasWarnings || evaluation?.ok === false ? 'warning' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
+                      最大 {maxUtilizationRatio === null ? '--' : formatPercent(maxUtilizationRatio)}
+                    </span>
                   </div>
-
-                  {inferred?.effectiveSpec && (
-                    <div className="quantity-channel-controls">
-                      <span>推荐：{inferred.spec?.label ?? '无'}</span>
-                      <select
-                        onChange={(event) => {
-                          const selectedSpec = options.find(
-                            (option) => specKey(option) === event.target.value,
-                          );
-                          if (selectedSpec && inferred) {
-                            commitSpec(channel.id, selectedSpec, inferred.loadSignature);
-                          }
-                        }}
-                        value={finalSpecKey || ''}
-                      >
-                        <option value="">选择最终规格</option>
-                        {options.map((option) => (
-                          <option key={specKey(option)} value={specKey(option)}>
-                            {option.label}
-                          </option>
-                        ))}
-                        {inferred.finalSpec && !finalSpecIsStandard && (
-                          <option value={finalSpecKey}>{inferred.finalSpec.label}</option>
-                        )}
-                      </select>
-                      <button
-                        className="ghost-button compact"
-                        disabled={!inferred.spec}
-                        onClick={() => {
-                          if (inferred.spec) {
-                            commitSpec(channel.id, inferred.spec, inferred.loadSignature);
-                          }
-                        }}
-                        type="button"
-                      >
-                        确认推荐
-                      </button>
-                      <button
-                        className="ghost-button compact"
-                        onClick={() => dispatch(clearTopologyChannelSpec(channel.id))}
-                        type="button"
-                      >
-                        清除
-                      </button>
-                      <button
-                        className="ghost-button compact"
-                        onClick={() => setExpandedChannelId(expanded ? null : channel.id)}
-                        type="button"
-                      >
-                        {expanded ? '收起' : '展开'}
-                      </button>
-                    </div>
-                  )}
-
-                  {evaluation && evaluation.utilizationRows.length > 0 && (
-                    <div className="utilization-list">
-                      {evaluation.utilizationRows.map((row) => (
-                        <div className={row.ok ? 'utilization-row' : 'utilization-row warning'} key={row.label}>
-                          <span>{row.label}</span>
-                          <em>{cableClassLabels[row.cableClass]}</em>
-                          <strong>{formatPercent(row.utilizationRatio)}</strong>
-                          <b>上限 {formatPercent(row.limitRatio)}</b>
-                          {row.cableItems.length > 0 && (
-                            <i>
-                              {row.cableItems
-                                .map(
-                                  (item) =>
-                                    `${item.usage ? `${item.usage} / ` : ''}${item.model} x ${item.quantity}`,
-                                )
-                                .join('；')}
-                            </i>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {evaluation?.warnings.map((warning) => (
-                    <div className="locked-note" key={warning}>
-                      {warning}
-                    </div>
-                  ))}
 
                   {expanded && inferred && (
                     <div className="channel-detail-panel">
+                      {evaluation && evaluation.utilizationRows.length > 0 && (
+                        <div className="utilization-list">
+                          {evaluation.utilizationRows.map((row) => (
+                            <div
+                              className={row.ok ? 'utilization-row' : 'utilization-row warning'}
+                              key={row.label}
+                            >
+                              <span>{row.label}</span>
+                              <em>{cableClassLabels[row.cableClass]}</em>
+                              <strong>{formatPercent(row.utilizationRatio)}</strong>
+                              <b>上限 {formatPercent(row.limitRatio)}</b>
+                              {row.cableItems.length > 0 && (
+                                <i>
+                                  {row.cableItems
+                                    .map(
+                                      (item) =>
+                                        `${item.usage ? `${item.usage} / ` : ''}${item.model} x ${item.quantity}`,
+                                    )
+                                    .join('；')}
+                                </i>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {evaluation?.warnings.map((warning) => (
+                        <div className="locked-note" key={warning}>
+                          {warning}
+                        </div>
+                      ))}
+
                       <div className="panel-heading compact-heading">
                         <h2>线缆明细</h2>
                         <span>总截面 {formatArea(inferred.cableAreaMm2)}</span>

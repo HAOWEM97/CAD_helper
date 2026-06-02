@@ -249,6 +249,33 @@ export function specKey(spec: ChannelSpec | null | undefined) {
   return `tray:${spec.widthMm}:${spec.heightMm}:${divider}:${spec.source ?? 'standard'}`;
 }
 
+export function defaultDepthForSpec(spec: ChannelSpec | null | undefined) {
+  if (!spec) {
+    return undefined;
+  }
+
+  if (spec.kind === 'tray') {
+    return 0;
+  }
+
+  if (spec.source === 'custom') {
+    return -500;
+  }
+
+  switch (spec.label) {
+    case '16*DN125':
+      return -1190;
+    case '12*DN125':
+      return -1035;
+    case '8*DN125':
+      return -880;
+    case '2*DN125+2*DN32':
+      return -500;
+    default:
+      return -500;
+  }
+}
+
 function finiteQuantity(item: ConnectionCableItem) {
   return item.quantity.mode === 'fixed' ? Math.max(0, item.quantity.count) : 0;
 }

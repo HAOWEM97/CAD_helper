@@ -433,7 +433,12 @@ const projectSlice = createSlice({
     },
     confirmTopologyChannelSpec(
       state,
-      action: PayloadAction<{ channelId: string; spec: ChannelSpec; loadSignature: string }>,
+      action: PayloadAction<{
+        channelId: string;
+        spec: ChannelSpec;
+        loadSignature: string;
+        defaultDepthMm?: number;
+      }>,
     ) {
       const channel = state.current.topology.channels.find(
         (item) => item.id === action.payload.channelId,
@@ -445,6 +450,13 @@ const projectSlice = createSlice({
       channel.finalSpec = action.payload.spec;
       channel.specLoadSignature = action.payload.loadSignature;
       channel.specConfirmedAt = new Date().toISOString();
+      if (
+        channel.depthMm === undefined &&
+        typeof action.payload.defaultDepthMm === 'number' &&
+        Number.isFinite(action.payload.defaultDepthMm)
+      ) {
+        channel.depthMm = action.payload.defaultDepthMm;
+      }
     },
     clearTopologyChannelSpec(state, action: PayloadAction<string>) {
       const channel = state.current.topology.channels.find((item) => item.id === action.payload);
@@ -472,7 +484,7 @@ const projectSlice = createSlice({
         return;
       }
 
-      channel.depthMm = Math.max(0, action.payload.depthMm);
+      channel.depthMm = action.payload.depthMm;
     },
     upsertCableSpec(state, action: PayloadAction<CableSpec>) {
       const spec = action.payload;

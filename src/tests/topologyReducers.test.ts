@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { STANDARD_DUCT_SPECS, STANDARD_TRAY_SPECS, defaultDepthForSpec } from '@/domain/quantity/bom';
 import projectReducer, {
   addTopologyChannel,
   addTopologyNode,
@@ -114,7 +115,82 @@ describe('topology reducers', () => {
     ]);
   });
 
-  it('stores editable channel depth after quantity spec inference unlocks the field', () => {
+  it('stores editable channel height including underground negative values', () => {
+    let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
+    state = projectReducer(
+      state,
+      addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
+    );
+
+    for (const depthMm of [-1190, -500, 0]) {
+      state = projectReducer(
+        state,
+        updateTopologyChannelDepth({ channelId: 'channel-a', depthMm }),
+      );
+
+      expect(state.current.topology.channels[0].depthMm).toBe(depthMm);
+    }
+
+    state = projectReducer(
+      state,
+      updateTopologyChannelDepth({ channelId: 'channel-a', depthMm: null }),
+    );
+
+    expect(state.current.topology.channels[0].depthMm).toBeUndefined();
+  });
+
+  it('applies default channel height when confirming a spec with empty height', () => {
+    const cases = [
+      ['16*DN125', -1190],
+      ['12*DN125', -1035],
+      ['8*DN125', -880],
+      ['2*DN125+2*DN32', -500],
+    ] as const;
+
+    for (const [label, expectedDepth] of cases) {
+      let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+      state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
+      state = projectReducer(
+        state,
+        addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
+      );
+      const spec = STANDARD_DUCT_SPECS.find((item) => item.label === label);
+
+      expect(spec).toBeDefined();
+      state = projectReducer(
+        state,
+        confirmTopologyChannelSpec({
+          channelId: 'channel-a',
+          loadSignature: `signature-${label}`,
+          spec: spec!,
+          defaultDepthMm: defaultDepthForSpec(spec),
+        }),
+      );
+
+      expect(state.current.topology.channels[0].depthMm).toBe(expectedDepth);
+    }
+
+    let trayState = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    trayState = projectReducer(trayState, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
+    trayState = projectReducer(
+      trayState,
+      addTopologyChannel({ id: 'channel-a', startNodeId: 'node-a', endNodeId: 'node-b' }),
+    );
+    trayState = projectReducer(
+      trayState,
+      confirmTopologyChannelSpec({
+        channelId: 'channel-a',
+        loadSignature: 'signature-tray',
+        spec: STANDARD_TRAY_SPECS[0],
+        defaultDepthMm: defaultDepthForSpec(STANDARD_TRAY_SPECS[0]),
+      }),
+    );
+
+    expect(trayState.current.topology.channels[0].depthMm).toBe(0);
+  });
+
+  it('does not overwrite a manually edited channel height when confirming another spec', () => {
     let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
     state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));
     state = projectReducer(
@@ -123,17 +199,19 @@ describe('topology reducers', () => {
     );
     state = projectReducer(
       state,
-      updateTopologyChannelDepth({ channelId: 'channel-a', depthMm: 450 }),
+      updateTopologyChannelDepth({ channelId: 'channel-a', depthMm: -250 }),
     );
-
-    expect(state.current.topology.channels[0].depthMm).toBe(450);
-
     state = projectReducer(
       state,
-      updateTopologyChannelDepth({ channelId: 'channel-a', depthMm: null }),
+      confirmTopologyChannelSpec({
+        channelId: 'channel-a',
+        loadSignature: 'signature-a',
+        spec: STANDARD_DUCT_SPECS[0],
+        defaultDepthMm: defaultDepthForSpec(STANDARD_DUCT_SPECS[0]),
+      }),
     );
 
-    expect(state.current.topology.channels[0].depthMm).toBeUndefined();
+    expect(state.current.topology.channels[0].depthMm).toBe(-250);
   });
 
   it('stores confirmed channel spec independently from editable depth', () => {
