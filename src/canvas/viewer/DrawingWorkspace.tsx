@@ -669,6 +669,21 @@ export function DrawingWorkspace() {
       return;
     }
 
+    if (activeStep === 'quantity') {
+      const viewerPoint = getViewerPointFromPointer(event);
+      if (!viewerPoint || !calibration) {
+        return;
+      }
+
+      const channelHit = getChannelHit(viewerPoint);
+      dispatch(
+        setSelectedTopologyObject(
+          channelHit ? { type: 'channel', id: channelHit.channel.id } : null,
+        ),
+      );
+      return;
+    }
+
     if (activeStep === 'drawing') {
       const viewerPoint = getViewerPointFromPointer(event);
       if (!viewerPoint || !calibration) {

@@ -6,6 +6,7 @@ import {
   createCustomDuctSpec,
   createCustomTraySpec,
   evaluateChannelSpec,
+  getChannelHorizontalLength,
   inferChannelSpecs,
 } from '@/domain/quantity/bom';
 import type { Project } from '@/domain/project/types';
@@ -163,6 +164,20 @@ describe('quantity bom derivation', () => {
       horizontalLengthMm: 2000,
     });
     expect(buildRouteDetail(project, 'missing-route')).toBeNull();
+  });
+
+  it('calculates a single channel horizontal length and returns null for broken topology', () => {
+    const project = createProject();
+
+    expect(getChannelHorizontalLength(project.topology, 'channel-a')).toEqual({
+      channelId: 'channel-a',
+      horizontalLengthMm: 1000,
+    });
+
+    project.topology.channels[0].endNodeId = 'missing-node';
+
+    expect(getChannelHorizontalLength(project.topology, 'channel-a')).toBeNull();
+    expect(getChannelHorizontalLength(project.topology, 'missing-channel')).toBeNull();
   });
 
   it('marks inferred channels without user depth while keeping bom derived', () => {

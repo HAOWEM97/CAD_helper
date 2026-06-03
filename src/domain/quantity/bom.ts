@@ -87,6 +87,11 @@ export type BomSummary = {
   missingDepthChannelIds: string[];
 };
 
+export type ChannelLengthDetail = {
+  channelId: string;
+  horizontalLengthMm: number;
+};
+
 export type RouteDetail = {
   routeId: string;
   horizontalLengthMm: number;
@@ -293,10 +298,29 @@ export function classifyCableUsage(usage: string | undefined): CableClass {
   return usage?.includes('通信线') ? 'communication' : 'power';
 }
 
-function channelLength(channel: ChannelSegment, topology: TopologyGraph) {
+export function getChannelHorizontalLength(
+  topology: TopologyGraph,
+  channelId: string,
+): ChannelLengthDetail | null {
+  const channel = topology.channels.find((item) => item.id === channelId);
+  if (!channel) {
+    return null;
+  }
+
   const start = topology.nodes.find((node) => node.id === channel.startNodeId);
   const end = topology.nodes.find((node) => node.id === channel.endNodeId);
-  return start && end ? getDistance(start.position, end.position) : 0;
+  if (!start || !end) {
+    return null;
+  }
+
+  return {
+    channelId,
+    horizontalLengthMm: getDistance(start.position, end.position),
+  };
+}
+
+function channelLength(channel: ChannelSegment, topology: TopologyGraph) {
+  return getChannelHorizontalLength(topology, channel.id)?.horizontalLengthMm ?? 0;
 }
 
 function findMatchingEndItem(

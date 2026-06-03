@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
 import { parseCableQuantity, parseDiameterText } from '@/domain/library/defaultDeviceLibrary';
 import {
@@ -6,6 +6,7 @@ import {
   createCustomDuctSpec,
   createCustomTraySpec,
   defaultDepthForSpec,
+  getChannelHorizontalLength,
   getSelectableSpecs,
   specKey,
   type CableClass,
@@ -1462,6 +1463,9 @@ function QuantityPanel() {
   const bomSummary = useAppSelector(selectBomSummary);
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
   const [expandedChannelId, setExpandedChannelId] = useState<string | null>(null);
+  const channelRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const quantityPanelSelectionRef = useRef<string | null>(null);
+  const pendingScrollChannelIdRef = useRef<string | null>(null);
   const [customTrayDrafts, setCustomTrayDrafts] = useState<
     Record<string, { widthMm: string; heightMm: string; powerWidthMm: string; communicationWidthMm: string }>
   >({});
@@ -1481,6 +1485,7 @@ function QuantityPanel() {
   }
 
   function highlightChannel(channelId: string) {
+    quantityPanelSelectionRef.current = channelId;
     dispatch(setSelectedTopologyObject({ type: 'channel', id: channelId }));
   }
 
@@ -1535,6 +1540,40 @@ function QuantityPanel() {
     return Number(draft.DN125 || 0) + Number(draft.DN100 || 0) + Number(draft.DN32 || 0) > 0;
   }
 
+  useEffect(() => {
+    if (selectedObject?.type !== 'channel') {
+      return;
+    }
+
+    const channelExists = topology.channels.some((channel) => channel.id === selectedObject.id);
+    if (!channelExists) {
+      return;
+    }
+
+    const selectedFromQuantityPanel = quantityPanelSelectionRef.current === selectedObject.id;
+    quantityPanelSelectionRef.current = null;
+    if (selectedFromQuantityPanel) {
+      return;
+    }
+
+    pendingScrollChannelIdRef.current = selectedObject.id;
+    setExpandedChannelId(selectedObject.id);
+  }, [selectedObject, topology.channels]);
+
+  useEffect(() => {
+    if (!expandedChannelId || pendingScrollChannelIdRef.current !== expandedChannelId) {
+      return;
+    }
+
+    pendingScrollChannelIdRef.current = null;
+    window.requestAnimationFrame(() => {
+      channelRowRefs.current[expandedChannelId]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    });
+  }, [expandedChannelId]);
+
   return (
     <div className="routing-panel">
       <div className="route-list">
@@ -1567,6 +1606,7 @@ function QuantityPanel() {
               const maxUtilizationRatio = evaluation?.utilizationRows.length
                 ? evaluation.maxUtilizationRatio
                 : null;
+              const channelLengthDetail = getChannelHorizontalLength(topology, channel.id);
               const rowClassName = [
                 'quantity-channel-row',
                 selected ? 'selected' : '',
@@ -1580,6 +1620,9 @@ function QuantityPanel() {
                   aria-expanded={expanded}
                   className={rowClassName}
                   key={channel.id}
+                  ref={(element) => {
+                    channelRowRefs.current[channel.id] = element;
+                  }}
                   onClick={(event) => {
                     if (!shouldIgnoreChannelRowClick(event)) {
                       selectChannel(channel.id);
@@ -1655,6 +1698,15 @@ function QuantityPanel() {
 
                   {expanded && inferred && (
                     <div className="channel-detail-panel">
+                      <div className="channel-length-row">
+                        <span>通道长度</span>
+                        <strong>
+                          {channelLengthDetail
+                            ? formatMeters(channelLengthDetail.horizontalLengthMm)
+                            : '--'}
+                        </strong>
+                      </div>
+
                       {evaluation && evaluation.utilizationRows.length > 0 && (
                         <div className="utilization-list">
                           {evaluation.utilizationRows.map((row) => (

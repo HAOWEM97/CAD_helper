@@ -1423,6 +1423,25 @@ button {
   padding-top: 8px;
 }
 
+.channel-length-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 7px;
+  background: #ffffff;
+}
+
+.channel-length-row span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.channel-length-row strong {
+  color: var(--accent-strong);
+}
+
 .channel-cable-row {
   grid-template-columns: minmax(0, 1fr) minmax(58px, auto) auto auto auto;
 }
