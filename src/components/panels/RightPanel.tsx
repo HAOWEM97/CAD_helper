@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { buildCadScriptExport } from '@/domain/cad-export/cadScript';
 import type { CalibrationDraftPoint, CalibrationSlot } from '@/domain/cad-coordinate/types';
 import { parseCableQuantity, parseDiameterText } from '@/domain/library/defaultDeviceLibrary';
 import {
@@ -83,6 +84,7 @@ import {
   setSelectedTopologyObject,
   toggleRightPanelCollapsed,
 } from '@/state/slices/uiSlice';
+import { downloadTextFile, timestampForFilename } from '@/services/file/downloadTextFile';
 import {
   loadGlobalPresetLibrary,
   deleteGlobalCableSpec,
@@ -141,29 +143,6 @@ function parseNumberInput(value: string) {
 
 function formatMeters(mm: number) {
   return `${(mm / 1000).toFixed(2)} m`;
-}
-
-function csvTimestamp(date = new Date()) {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-    '-',
-    pad(date.getHours()),
-    pad(date.getMinutes()),
-    pad(date.getSeconds()),
-  ].join('');
-}
-
-function downloadTextFile(filename: string, text: string, type: string) {
-  const blob = new Blob([text], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function connectionLabel(point: DeviceConnectionPoint, devices: DeviceInstance[]) {
@@ -1523,7 +1502,7 @@ function QuantityPanel() {
     }
 
     downloadTextFile(
-      `线缆用量明细-${csvTimestamp()}.csv`,
+      `线缆用量明细-${timestampForFilename()}.csv`,
       serializeCableUsageDetailCsv(cableUsageDetailExport.rows),
       'text/csv;charset=utf-8',
     );
@@ -1962,6 +1941,87 @@ function QuantityPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ExportPanel() {
+  const project = useAppSelector(selectProject);
+  const cadScriptExport = useMemo(() => buildCadScriptExport(project, 'bas'), [project]);
+  const [exportMessage, setExportMessage] = useState('');
+
+  useEffect(() => {
+    setExportMessage('');
+  }, [cadScriptExport.text, cadScriptExport.message]);
+
+  function exportBasScript() {
+    if (!cadScriptExport.canExport) {
+      setExportMessage(cadScriptExport.message);
+      return;
+    }
+
+    downloadTextFile(
+      `CAD脚本-${timestampForFilename()}.bas`,
+      cadScriptExport.text,
+      'text/plain;charset=utf-8',
+    );
+    setExportMessage(`已导出 ${cadScriptExport.channelCount} 条通道脚本。`);
+  }
+
+  return (
+    <div className="export-panel">
+      <div className="route-list">
+        <div className="panel-heading compact-heading">
+          <h2>CAD 脚本</h2>
+          <span>.bas</span>
+        </div>
+        <div className="quantity-export-actions">
+          <span>{cadScriptExport.channelCount} 条可导出通道</span>
+          <button
+            className="primary-button compact"
+            disabled={!cadScriptExport.canExport}
+            onClick={exportBasScript}
+            title={cadScriptExport.message || '导出当前拓扑的 CAD VBA 脚本'}
+            type="button"
+          >
+            导出 .bas
+          </button>
+        </div>
+        {(exportMessage || cadScriptExport.message) && (
+          <div className={cadScriptExport.canExport ? 'scope-note' : 'locked-note'}>
+            {cadScriptExport.canExport ? exportMessage : cadScriptExport.message}
+          </div>
+        )}
+      </div>
+
+      <div className="route-list">
+        <div className="panel-heading compact-heading">
+          <h2>输出规则</h2>
+          <span>Local-First</span>
+        </div>
+        <div className="route-detail-row">
+          <span>线槽图层</span>
+          <strong>CAD_HELPER_TRAY</strong>
+        </div>
+        <div className="route-detail-row">
+          <span>排管图层</span>
+          <strong>CAD_HELPER_DUCT</strong>
+        </div>
+        <div className="route-detail-row">
+          <span>标注图层</span>
+          <strong>CAD_HELPER_ANNOTATION</strong>
+        </div>
+      </div>
+
+      {cadScriptExport.canExport && (
+        <div className="route-list">
+          <div className="panel-heading compact-heading">
+            <h2>脚本预览</h2>
+            <span>CAD 坐标</span>
+          </div>
+          <pre className="script-preview">{cadScriptExport.text}</pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -2740,6 +2800,8 @@ export function RightPanel() {
           <RoutingTodoPanel />
         ) : activeStep === 'quantity' ? (
           <QuantityPanel />
+        ) : activeStep === 'export' ? (
+          <ExportPanel />
         ) : (
           <div className="empty-state">
             <strong>未选择对象</strong>
