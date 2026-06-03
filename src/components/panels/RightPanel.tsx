@@ -8,6 +8,7 @@ import {
   defaultDepthForSpec,
   getChannelHorizontalLength,
   getSelectableSpecs,
+  serializeCableUsageDetailCsv,
   specKey,
   type CableClass,
   type ChannelCableLoad,
@@ -36,6 +37,7 @@ import {
   selectCableSpecs,
   selectBomSummary,
   selectCalibration,
+  selectCableUsageDetailExport,
   selectCalibrationDraft,
   selectConnectionPoints,
   selectConnectionPointPresets,
@@ -139,6 +141,29 @@ function parseNumberInput(value: string) {
 
 function formatMeters(mm: number) {
   return `${(mm / 1000).toFixed(2)} m`;
+}
+
+function csvTimestamp(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    '-',
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join('');
+}
+
+function downloadTextFile(filename: string, text: string, type: string) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function connectionLabel(point: DeviceConnectionPoint, devices: DeviceInstance[]) {
@@ -1461,8 +1486,10 @@ function QuantityPanel() {
   const dispatch = useAppDispatch();
   const topology = useAppSelector(selectTopology);
   const bomSummary = useAppSelector(selectBomSummary);
+  const cableUsageDetailExport = useAppSelector(selectCableUsageDetailExport);
   const selectedObject = useAppSelector(selectSelectedTopologyObject);
   const [expandedChannelId, setExpandedChannelId] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState('');
   const channelRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const quantityPanelSelectionRef = useRef<string | null>(null);
   const pendingScrollChannelIdRef = useRef<string | null>(null);
@@ -1487,6 +1514,20 @@ function QuantityPanel() {
   function highlightChannel(channelId: string) {
     quantityPanelSelectionRef.current = channelId;
     dispatch(setSelectedTopologyObject({ type: 'channel', id: channelId }));
+  }
+
+  function exportCableUsageDetails() {
+    if (!cableUsageDetailExport.canExport) {
+      setExportMessage(cableUsageDetailExport.message);
+      return;
+    }
+
+    downloadTextFile(
+      `线缆用量明细-${csvTimestamp()}.csv`,
+      serializeCableUsageDetailCsv(cableUsageDetailExport.rows),
+      'text/csv;charset=utf-8',
+    );
+    setExportMessage(`已导出 ${cableUsageDetailExport.rows.length} 条线缆用量明细。`);
   }
 
   function applyDefaultDepthIfEmpty(channelId: string) {
@@ -1885,8 +1926,24 @@ function QuantityPanel() {
       <div className="route-list">
         <div className="panel-heading compact-heading">
           <h2>BOM 摘要</h2>
-          <span>{bomSummary.validRouteCount} 条有效路由</span>
+          <div className="quantity-export-actions">
+            <span>{bomSummary.validRouteCount} 条有效路由，线缆工程用量 *1.05</span>
+            <button
+              className="primary-button compact"
+              disabled={!cableUsageDetailExport.canExport}
+              onClick={exportCableUsageDetails}
+              title={cableUsageDetailExport.message || '导出当前有效路由的线缆用量明细'}
+              type="button"
+            >
+              导出线缆明细 CSV
+            </button>
+          </div>
         </div>
+        {(exportMessage || cableUsageDetailExport.message) && (
+          <div className={cableUsageDetailExport.canExport ? 'scope-note' : 'locked-note'}>
+            {cableUsageDetailExport.canExport ? exportMessage : cableUsageDetailExport.message}
+          </div>
+        )}
         {bomSummary.cableRows.length === 0 ? (
           <div className="empty-state">
             <strong>暂无有效线缆路由</strong>

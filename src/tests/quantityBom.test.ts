@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBomSummary,
+  buildCableUsageDetailExport,
   buildRouteDetail,
   classifyCableUsage,
   createCustomDuctSpec,
@@ -8,6 +9,7 @@ import {
   evaluateChannelSpec,
   getChannelHorizontalLength,
   inferChannelSpecs,
+  serializeCableUsageDetailCsv,
 } from '@/domain/quantity/bom';
 import type { Project } from '@/domain/project/types';
 
@@ -125,7 +127,7 @@ describe('quantity bom derivation', () => {
     ]);
   });
 
-  it('calculates cable length from 2D route length, endpoint heights and channel depth changes', () => {
+  it('calculates cable engineering length from 2D route length, endpoint heights and channel depth changes', () => {
     const project = createProject();
     const summary = buildBomSummary(project);
 
@@ -133,12 +135,71 @@ describe('quantity bom derivation', () => {
       expect.objectContaining({
         cableSpecId: 'spec-a',
         quantity: 2,
-        totalLengthMm: 6800,
+        totalLengthMm: 7140,
       }),
     ]);
     expect(summary.channelRows).toEqual([
       expect.objectContaining({ category: 'duct', label: '2*DN125+2*DN32', count: 1, totalLengthMm: 1000 }),
       expect.objectContaining({ category: 'tray', label: '200x150mm', count: 1, totalLengthMm: 1000 }),
+    ]);
+  });
+
+  it('builds cable usage detail rows from route, endpoint and height transition lengths', () => {
+    const project = createProject();
+    project.connectionPoints[0].items[0].usage = '直流线';
+    const detail = buildCableUsageDetailExport(project);
+
+    expect(detail.canExport).toBe(true);
+    expect(detail.rows).toEqual([
+      expect.objectContaining({
+        routeStart: '主机1 / 主机到终端',
+        routeEnd: '终端1 / 主机到终端',
+        routeLengthMm: 2000,
+        cableModel: 'CAT6',
+        cableUsage: '直流线',
+        startConnectionLengthMm: 900,
+        endConnectionLengthMm: 300,
+        pathHeightTransitionLengthMm: 200,
+        singleLengthMm: 3400,
+        engineeringFactor: 1.05,
+        singleEngineeringLengthMm: 3570,
+        quantity: 2,
+        totalEngineeringLengthMm: 7140,
+      }),
+    ]);
+  });
+
+  it('keeps cable usage detail rows split by cable item and filters stale routes', () => {
+    const project = createProject();
+    project.cableSpecs.push({ id: 'spec-b', model: 'RVVSP', diameterText: '约 8', diameterMm: 8 });
+    project.connectionPoints[0].items[0].usage = '交流线';
+    project.connectionPoints[0].items.push({
+      id: 'item-comm',
+      cableSpecId: 'spec-b',
+      usage: '通信线',
+      quantity: { mode: 'fixed', count: 1 },
+      connectionHeightMm: 1000,
+    });
+    project.connectionPoints[1].items.push({
+      id: 'item-comm-end',
+      cableSpecId: 'spec-b',
+      usage: '通信线',
+      quantity: { mode: 'fixed', count: 1 },
+      connectionHeightMm: 600,
+    });
+    project.routes.push({
+      id: 'route-stale',
+      fromConnectionPointId: 'point-a',
+      toConnectionPointId: 'point-b',
+      pathSegmentIds: ['channel-a'],
+      status: 'needs-recalculation',
+    });
+
+    const detail = buildCableUsageDetailExport(project);
+
+    expect(detail.rows.map((row) => `${row.cableModel}:${row.cableUsage}:${row.quantity}`)).toEqual([
+      'CAT6:交流线:2',
+      'RVVSP:通信线:1',
     ]);
   });
 
@@ -151,7 +212,7 @@ describe('quantity bom derivation', () => {
       expect.objectContaining({
         cableSpecId: 'spec-a',
         quantity: 2,
-        totalLengthMm: 12760,
+        totalLengthMm: 13398,
       }),
     ]);
   });
@@ -185,6 +246,28 @@ describe('quantity bom derivation', () => {
     delete project.topology.channels[0].depthMm;
 
     expect(buildBomSummary(project).missingDepthChannelIds).toEqual(['channel-a']);
+  });
+
+  it('blocks cable usage detail export when valid routes have missing channel depths', () => {
+    const project = createProject();
+    delete project.topology.channels[0].depthMm;
+    const detail = buildCableUsageDetailExport(project);
+
+    expect(detail.canExport).toBe(false);
+    expect(detail.missingDepthChannelIds).toEqual(['channel-a']);
+    expect(detail.message).toContain('未填写敷设深度');
+  });
+
+  it('serializes cable usage detail csv with Chinese headers, BOM and escaped fields', () => {
+    const project = createProject();
+    project.deviceInstances[0].name = '主机,东侧';
+    project.connectionPoints[0].items[0].usage = '直流线';
+    const csv = serializeCableUsageDetailCsv(buildCableUsageDetailExport(project).rows);
+
+    expect(csv.startsWith('\uFEFF路由起点,路由终点,路由长度(m)')).toBe(true);
+    expect(csv).toContain('"主机,东侧 / 主机到终端"');
+    expect(csv).toContain(',CAT6,直流线,');
+    expect(csv).toContain(',1.05,3.570,2,7.140');
   });
 
   it('classifies only usage text containing communication as communication cable', () => {

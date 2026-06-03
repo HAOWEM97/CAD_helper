@@ -97,8 +97,50 @@ export type RouteDetail = {
   horizontalLengthMm: number;
 };
 
+export type CableUsageDetailRow = {
+  routeId: string;
+  routeStart: string;
+  routeEnd: string;
+  routeLengthMm: number;
+  cableSpecId: string;
+  cableModel: string;
+  cableUsage: string;
+  startConnectionLengthMm: number;
+  endConnectionLengthMm: number;
+  pathHeightTransitionLengthMm: number;
+  singleLengthMm: number;
+  engineeringFactor: number;
+  singleEngineeringLengthMm: number;
+  quantity: number;
+  totalEngineeringLengthMm: number;
+};
+
+export type CableUsageDetailExport = {
+  rows: CableUsageDetailRow[];
+  missingDepthChannelIds: string[];
+  canExport: boolean;
+  message: string;
+};
+
 const POWER_FILL_LIMIT = 0.4;
 const COMMUNICATION_FILL_LIMIT = 0.5;
+export const CABLE_USAGE_ENGINEERING_FACTOR = 1.05;
+
+export const CABLE_USAGE_DETAIL_CSV_HEADERS = [
+  '路由起点',
+  '路由终点',
+  '路由长度(m)',
+  '线缆型号',
+  '线缆用途',
+  '起点接线长度(m)',
+  '终点接线长度(m)',
+  '路径高度变换长度(m)',
+  '单根长度(m)',
+  '工程放量系数',
+  '单根工程长度(m)',
+  '线缆数量',
+  '总计工程长度(m)',
+];
 
 export const DUCT_SIZE_DEFINITIONS: Record<DuctSize, DuctSpecItem> = {
   DN125: {
@@ -373,23 +415,41 @@ function routeVerticalAllowance(
   endItem: ConnectionCableItem | null,
   channelById: Map<string, ChannelSegment>,
 ) {
+  const breakdown = routeLengthBreakdown(route, startItem, endItem, channelById);
+  return (
+    breakdown.startConnectionLengthMm +
+    breakdown.endConnectionLengthMm +
+    breakdown.pathHeightTransitionLengthMm
+  );
+}
+
+function routeLengthBreakdown(
+  route: CableRoute,
+  startItem: ConnectionCableItem,
+  endItem: ConnectionCableItem | null,
+  channelById: Map<string, ChannelSegment>,
+) {
   const depths = pathDepths(route, channelById);
   if (depths.length === 0) {
-    return 0;
+    return {
+      startConnectionLengthMm: 0,
+      endConnectionLengthMm: 0,
+      pathHeightTransitionLengthMm: 0,
+    };
   }
 
   const startDepth = depths[0];
   const endDepth = depths[depths.length - 1];
   const endHeight = endItem?.connectionHeightMm ?? startItem.connectionHeightMm;
-  const transitionAllowance = depths.slice(1).reduce((sum, depth, index) => {
+  const pathHeightTransitionLengthMm = depths.slice(1).reduce((sum, depth, index) => {
     return sum + Math.abs(depth - depths[index]);
   }, 0);
 
-  return (
-    Math.abs(startItem.connectionHeightMm - startDepth) +
-    Math.abs(endHeight - endDepth) +
-    transitionAllowance
-  );
+  return {
+    startConnectionLengthMm: Math.abs(startItem.connectionHeightMm - startDepth),
+    endConnectionLengthMm: Math.abs(endHeight - endDepth),
+    pathHeightTransitionLengthMm,
+  };
 }
 
 export function getChannelCableLoads(project: Project) {
@@ -432,6 +492,37 @@ export function getChannelCableLoads(project: Project) {
   }
 
   return loadsByChannelId;
+}
+
+function connectionPointLabel(
+  point: Project['connectionPoints'][number],
+  deviceById: Map<string, Project['deviceInstances'][number]>,
+) {
+  if (point.mode === 'custom') {
+    return `${point.customInstanceName ?? '自定义'} / ${point.portType}`;
+  }
+
+  const device = point.deviceId ? deviceById.get(point.deviceId) : null;
+  return `${device?.name ?? '未知设备'} / ${point.portType}`;
+}
+
+function validRouteMissingDepthChannelIds(project: Project) {
+  const channelById = new Map(project.topology.channels.map((channel) => [channel.id, channel]));
+  const missingDepthChannelIds = new Set<string>();
+
+  for (const route of project.routes) {
+    if (route.status !== 'valid') {
+      continue;
+    }
+
+    for (const channelId of route.pathSegmentIds) {
+      if (channelById.get(channelId)?.depthMm === undefined) {
+        missingDepthChannelIds.add(channelId);
+      }
+    }
+  }
+
+  return Array.from(missingDepthChannelIds);
 }
 
 function aggregateLoads(loads: ChannelCableLoad[]) {
@@ -877,6 +968,111 @@ export function inferChannelSpecs(project: Project) {
   });
 }
 
+export function buildCableUsageDetailExport(project: Project): CableUsageDetailExport {
+  const channelById = new Map(project.topology.channels.map((channel) => [channel.id, channel]));
+  const pointById = new Map(project.connectionPoints.map((point) => [point.id, point]));
+  const deviceById = new Map(project.deviceInstances.map((device) => [device.id, device]));
+  const cableSpecsById = new Map(project.cableSpecs.map((spec) => [spec.id, spec]));
+  const missingDepthChannelIds = validRouteMissingDepthChannelIds(project);
+  const rows: CableUsageDetailRow[] = [];
+
+  for (const route of project.routes) {
+    if (route.status !== 'valid') {
+      continue;
+    }
+
+    const fromPoint = pointById.get(route.fromConnectionPointId);
+    const toPoint = pointById.get(route.toConnectionPointId);
+    if (!fromPoint || !toPoint) {
+      continue;
+    }
+
+    const routeLengthMm = routeHorizontalLength(route, project.topology);
+    const routeStart = connectionPointLabel(fromPoint, deviceById);
+    const routeEnd = connectionPointLabel(toPoint, deviceById);
+
+    for (const item of fromPoint.items) {
+      const quantity = finiteQuantity(item);
+      if (quantity === 0) {
+        continue;
+      }
+
+      const spec = cableSpecsById.get(item.cableSpecId);
+      const endItem = findMatchingEndItem(item, toPoint.items, cableSpecsById);
+      const breakdown = routeLengthBreakdown(route, item, endItem, channelById);
+      const singleLengthMm =
+        routeLengthMm +
+        breakdown.startConnectionLengthMm +
+        breakdown.endConnectionLengthMm +
+        breakdown.pathHeightTransitionLengthMm;
+      const singleEngineeringLengthMm = singleLengthMm * CABLE_USAGE_ENGINEERING_FACTOR;
+
+      rows.push({
+        routeId: route.id,
+        routeStart,
+        routeEnd,
+        routeLengthMm,
+        cableSpecId: item.cableSpecId,
+        cableModel: spec?.model ?? item.cableSpecId,
+        cableUsage: item.usage?.trim() ?? '',
+        ...breakdown,
+        singleLengthMm,
+        engineeringFactor: CABLE_USAGE_ENGINEERING_FACTOR,
+        singleEngineeringLengthMm,
+        quantity,
+        totalEngineeringLengthMm: singleEngineeringLengthMm * quantity,
+      });
+    }
+  }
+
+  const canExport = rows.length > 0 && missingDepthChannelIds.length === 0;
+  const message =
+    rows.length === 0
+      ? '暂无有效路由可导出。'
+      : missingDepthChannelIds.length > 0
+        ? '有效路由经过的通道存在未填写敷设深度，请补齐后再导出。'
+        : '';
+
+  return {
+    rows,
+    missingDepthChannelIds,
+    canExport,
+    message,
+  };
+}
+
+function formatCsvMeters(mm: number) {
+  return (mm / 1000).toFixed(3);
+}
+
+function escapeCsvCell(value: string | number) {
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+export function serializeCableUsageDetailCsv(rows: CableUsageDetailRow[]) {
+  const csvRows = [
+    CABLE_USAGE_DETAIL_CSV_HEADERS,
+    ...rows.map((row) => [
+      row.routeStart,
+      row.routeEnd,
+      formatCsvMeters(row.routeLengthMm),
+      row.cableModel,
+      row.cableUsage,
+      formatCsvMeters(row.startConnectionLengthMm),
+      formatCsvMeters(row.endConnectionLengthMm),
+      formatCsvMeters(row.pathHeightTransitionLengthMm),
+      formatCsvMeters(row.singleLengthMm),
+      row.engineeringFactor.toFixed(2),
+      formatCsvMeters(row.singleEngineeringLengthMm),
+      row.quantity,
+      formatCsvMeters(row.totalEngineeringLengthMm),
+    ]),
+  ];
+
+  return `\uFEFF${csvRows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')}`;
+}
+
 export function buildBomSummary(project: Project): BomSummary {
   const inferredChannelSpecs = inferChannelSpecs(project);
   const inferredSpecByChannelId = new Map(
@@ -937,13 +1133,14 @@ export function buildBomSummary(project: Project): BomSummary {
       const endItem = findMatchingEndItem(item, toPoint.items, cableSpecsById);
       const lengthPerCable =
         horizontalLength + routeVerticalAllowance(route, item, endItem, channelById);
+      const engineeringLengthPerCable = lengthPerCable * CABLE_USAGE_ENGINEERING_FACTOR;
       const existing = cableRowsByKey.get(key);
 
       cableRowsByKey.set(key, {
         cableSpecId: item.cableSpecId,
         model: spec?.model ?? item.cableSpecId,
         quantity: (existing?.quantity ?? 0) + quantity,
-        totalLengthMm: (existing?.totalLengthMm ?? 0) + lengthPerCable * quantity,
+        totalLengthMm: (existing?.totalLengthMm ?? 0) + engineeringLengthPerCable * quantity,
       });
     }
   }

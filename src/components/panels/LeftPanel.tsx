@@ -62,7 +62,7 @@ export function LeftPanel() {
       <section className="panel-card">
         <div className="panel-heading">
           <h2>BOM 清单</h2>
-          <span>实时统计</span>
+          <span>工程用量 *1.05</span>
         </div>
         {hasBomRows ? (
           <div className="bom-list">
@@ -73,7 +73,7 @@ export function LeftPanel() {
             )}
 
             <div className="bom-section">
-              <h3>线缆</h3>
+              <h3>线缆工程用量（*1.05）</h3>
               {bomSummary.cableRows.length > 0 ? (
                 bomSummary.cableRows.map((row) => (
                   <div className="bom-row" key={row.cableSpecId}>
@@ -81,7 +81,7 @@ export function LeftPanel() {
                       <strong>{row.model}</strong>
                       <span>{row.quantity} 根</span>
                     </div>
-                    <em>线缆</em>
+                    <em>工程用量</em>
                     <b>{formatMeters(row.totalLengthMm)}</b>
                   </div>
                 ))
@@ -111,7 +111,7 @@ export function LeftPanel() {
         ) : (
           <div className="empty-state">
             <strong>暂无材料数据</strong>
-            <p>完成设备路由与规格推演后，这里会显示线缆长度、通道规格与数量。</p>
+            <p>完成设备路由与规格推演后，这里会显示线缆工程用量、通道规格与数量。</p>
           </div>
         )}
       </section>
