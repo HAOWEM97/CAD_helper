@@ -1,9 +1,6 @@
 import type { WorkflowStep } from '@/domain/project/types';
-import { buildCadScriptExport } from '@/domain/cad-export/cadScript';
 import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAppSelector } from '@/hooks/useAppSelector';
-import { downloadTextFile, timestampForFilename } from '@/services/file/downloadTextFile';
-import { selectProject } from '@/state/selectors/projectSelectors';
 import { selectActiveStep } from '@/state/selectors/uiSelectors';
 import {
   setActiveStep,
@@ -28,22 +25,6 @@ export function TopToolbar() {
   const orthogonalLock = useAppSelector((state) => state.ui.orthogonalLock);
   const snappingEnabled = useAppSelector((state) => state.ui.snappingEnabled);
   const topologyToolMode = useAppSelector((state) => state.ui.topologyToolMode);
-  const project = useAppSelector(selectProject);
-
-  function exportCadScript() {
-    const result = buildCadScriptExport(project, 'bas');
-    dispatch(setActiveStep('export'));
-    if (!result.canExport) {
-      window.alert(result.message);
-      return;
-    }
-
-    downloadTextFile(
-      `CAD脚本-${timestampForFilename()}.bas`,
-      result.text,
-      'text/plain;charset=utf-8',
-    );
-  }
 
   return (
     <header className="top-toolbar">
@@ -106,9 +87,6 @@ export function TopToolbar() {
         </button>
         <button className="primary-button" type="button">
           保存工程
-        </button>
-        <button className="primary-button" onClick={exportCadScript} type="button">
-          导出 CAD 脚本
         </button>
       </div>
     </header>
