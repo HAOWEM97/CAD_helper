@@ -271,6 +271,30 @@ button {
   user-select: none;
 }
 
+.save-project-field {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.save-project-field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fbfcf7;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.save-project-field input:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgb(29 111 95 / 16%);
+}
+
 .save-project-options {
   display: grid;
   gap: 10px;
@@ -306,7 +330,19 @@ button {
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: 14px;
+}
+
+.dialog-message {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.split-actions {
+  flex-wrap: wrap;
 }
 
 @media (max-width: 1180px) {

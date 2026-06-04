@@ -16,6 +16,11 @@ import {
   parseProjectPackage,
   serializeProjectFile,
 } from '@/services/project-io/projectFile';
+import {
+  buildProjectDownloadFilename,
+  createDefaultProjectFilenameBase,
+  isBlankProject,
+} from '@/services/project-io/projectInteraction';
 import { selectProject } from '@/state/selectors/projectSelectors';
 import { selectActiveStep } from '@/state/selectors/uiSelectors';
 import { replaceProject, resetProject } from '@/state/slices/projectSlice';
@@ -58,6 +63,9 @@ export function TopToolbar() {
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [projectMenuPosition, setProjectMenuPosition] = useState({ left: 0, top: 0 });
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveFilenameDraft, setSaveFilenameDraft] = useState('');
+  const [loadAfterSave, setLoadAfterSave] = useState(false);
+  const [loadConfirmOpen, setLoadConfirmOpen] = useState(false);
   const [saveDialogPosition, setSaveDialogPosition] = useState<SaveDialogPosition>(() => ({
     left:
       typeof window === 'undefined'
@@ -67,7 +75,7 @@ export function TopToolbar() {
   }));
 
   useEffect(() => {
-    if (!saveDialogOpen || typeof window === 'undefined') {
+    if ((!saveDialogOpen && !loadConfirmOpen) || typeof window === 'undefined') {
       return;
     }
 
@@ -75,7 +83,7 @@ export function TopToolbar() {
       left: Math.min(Math.max(16, current.left), Math.max(16, window.innerWidth - SAVE_DIALOG_WIDTH - 16)),
       top: Math.min(Math.max(16, current.top), Math.max(16, window.innerHeight - 240)),
     }));
-  }, [saveDialogOpen]);
+  }, [loadConfirmOpen, saveDialogOpen]);
 
   useEffect(() => {
     if (!projectMenuOpen) {
@@ -132,27 +140,62 @@ export function TopToolbar() {
     setProjectMenuOpen((current) => !current);
   }
 
-  function projectFilename() {
-    return (project.name || '未命名工程').replace(/[\\/:*?"<>|]+/g, '_');
+  function defaultProjectFilenameBase() {
+    return createDefaultProjectFilenameBase(project.name, timestampForFilename());
+  }
+
+  function continueLoadIfNeeded() {
+    if (!loadAfterSave) {
+      return;
+    }
+
+    setLoadAfterSave(false);
+    projectFileInputRef.current?.click();
+  }
+
+  function closeSaveDialog() {
+    setSaveDialogOpen(false);
+    setLoadAfterSave(false);
   }
 
   function saveProjectFile() {
+    const filename = buildProjectDownloadFilename(saveFilenameDraft, '.json');
+    if (!filename) {
+      window.alert('请填写工程文件名。');
+      return;
+    }
+
     downloadTextFile(
-      `${projectFilename()}-${timestampForFilename()}.json`,
+      filename,
       serializeProjectFile(project),
       'application/json;charset=utf-8',
     );
     setSaveDialogOpen(false);
+    continueLoadIfNeeded();
   }
 
-  function openSaveDialog() {
+  function openSaveDialog(options: { loadAfterSave?: boolean } = {}) {
     setProjectMenuOpen(false);
+    setLoadConfirmOpen(false);
+    setLoadAfterSave(Boolean(options.loadAfterSave));
+    setSaveFilenameDraft(defaultProjectFilenameBase());
     setSaveDialogOpen(true);
+  }
+
+  function startProjectFilePicker() {
+    setProjectMenuOpen(false);
+    setLoadConfirmOpen(false);
+    projectFileInputRef.current?.click();
   }
 
   function openProjectFilePicker() {
     setProjectMenuOpen(false);
-    projectFileInputRef.current?.click();
+    if (isBlankProject(project)) {
+      startProjectFilePicker();
+      return;
+    }
+
+    setLoadConfirmOpen(true);
   }
 
   function imageBlobMatchesProjectMetadata(imageBlob: Blob) {
@@ -180,6 +223,12 @@ export function TopToolbar() {
   }
 
   async function saveProjectPackage() {
+    const filename = buildProjectDownloadFilename(saveFilenameDraft, '.cadproj');
+    if (!filename) {
+      window.alert('请填写工程文件名。');
+      return;
+    }
+
     if (!project.image) {
       window.alert('当前工程没有底图，无法保存带底图工程包。');
       return;
@@ -197,10 +246,11 @@ export function TopToolbar() {
     }
 
     downloadBlob(
-      `${projectFilename()}-${timestampForFilename()}.cadproj`,
+      filename,
       await createProjectPackage(project, imageBlob),
     );
     setSaveDialogOpen(false);
+    continueLoadIfNeeded();
   }
 
   async function loadProjectFile(event: ChangeEvent<HTMLInputElement>) {
@@ -252,6 +302,7 @@ export function TopToolbar() {
     dispatch(resetProject());
     dispatch(setActiveStep('calibration'));
     setSaveDialogOpen(false);
+    setLoadConfirmOpen(false);
   }
 
   function handleSaveDialogDragStart(event: ReactMouseEvent<HTMLElement>) {
@@ -297,6 +348,15 @@ export function TopToolbar() {
           <h2>保存工程</h2>
           <span>选择保存方式</span>
         </div>
+        <label className="save-project-field">
+          <span>工程文件名</span>
+          <input
+            onChange={(event) => setSaveFilenameDraft(event.target.value)}
+            placeholder="请输入工程文件名"
+            type="text"
+            value={saveFilenameDraft}
+          />
+        </label>
         <div className="save-project-options">
           <button className="save-project-option" onClick={saveProjectFile} type="button">
             <strong>仅保存工程数据</strong>
@@ -308,8 +368,45 @@ export function TopToolbar() {
           </button>
         </div>
         <div className="dialog-actions">
-          <button className="ghost-button" onClick={() => setSaveDialogOpen(false)} type="button">
+          <button className="ghost-button" onClick={closeSaveDialog} type="button">
             取消
+          </button>
+        </div>
+      </section>
+    </div>
+  ) : null;
+
+  const loadConfirmDialog = loadConfirmOpen ? (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        className="save-project-dialog load-project-dialog"
+        aria-modal="true"
+        role="dialog"
+        style={{ left: saveDialogPosition.left, top: saveDialogPosition.top }}
+      >
+        <div
+          className="panel-heading compact-heading draggable-dialog-heading"
+          onMouseDown={handleSaveDialogDragStart}
+        >
+          <h2>载入工程</h2>
+          <span>当前工程会被替换</span>
+        </div>
+        <p className="dialog-message">
+          载入其他工程会覆盖当前图纸、校准、拓扑、设备、路由、规格和算量结果。建议先保存当前工程，再继续载入。
+        </p>
+        <div className="dialog-actions split-actions">
+          <button className="ghost-button" onClick={() => setLoadConfirmOpen(false)} type="button">
+            取消
+          </button>
+          <button className="ghost-button" onClick={startProjectFilePicker} type="button">
+            直接载入并覆盖
+          </button>
+          <button
+            className="primary-button"
+            onClick={() => openSaveDialog({ loadAfterSave: true })}
+            type="button"
+          >
+            先保存当前工程
           </button>
         </div>
       </section>
@@ -322,7 +419,7 @@ export function TopToolbar() {
       ref={projectMenuRef}
       style={{ left: projectMenuPosition.left, top: projectMenuPosition.top }}
     >
-      <button onClick={openSaveDialog} type="button">
+      <button onClick={() => openSaveDialog()} type="button">
         保存工程
       </button>
       <button onClick={openProjectFilePicker} type="button">
@@ -413,6 +510,9 @@ export function TopToolbar() {
       </div>
       {projectMenu && typeof document !== 'undefined' && createPortal(projectMenu, document.body)}
       {saveDialog && typeof document !== 'undefined' && createPortal(saveDialog, document.body)}
+      {loadConfirmDialog &&
+        typeof document !== 'undefined' &&
+        createPortal(loadConfirmDialog, document.body)}
     </header>
   );
 }

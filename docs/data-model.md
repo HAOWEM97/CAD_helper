@@ -111,6 +111,7 @@ type ProjectFile = {
 - `.json` 工程文件不包含 PNG `Blob`、object URL、DOM、Canvas、OpenSeadragon 或其他运行时对象。
 - `.json` 中 `assetNotice.baseImageIncluded` 为 `false`，用于明确提示底图文件不在 JSON 中。
 - `.cadproj` 工程包是标准 zip 存储包，包含 `project.json` 与 `base-image.png`；包内 `project.json` 的 `assetNotice.baseImageIncluded` 为 `true`。
+- 保存弹窗中的下载文件名只属于浏览器导出交互，不写入 `Project` 数据；工程内部名称仍使用 `project.name`。
 - 载入 `.cadproj` 后，包内 PNG 会写入浏览器本地暂存，后续刷新可继续恢复底图。
 - 载入工程文件时会规范化旧数据、去重同一起点路由，并重建通道 `cableIds` 摘要。
 - 载入后 BOM、线缆明细和 CAD 脚本仍由当前工程状态重新派生，不从 JSON 读取旧汇总。
