@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPersistedDraft,
   loadPersistedDraft,
+  normalizeProject,
   pickPersistableUiState,
 } from '@/services/draft/draftPersistence';
+import { defaultCableSpecs, defaultDeviceTypePresets } from '@/domain/library/defaultDeviceLibrary';
 import projectReducer, {
   addTopologyChannel,
   addTopologyNode,
@@ -128,6 +130,52 @@ describe('draft persistence', () => {
       ['CAT6x1'],
       [],
     ]);
+  });
+
+  it('adds missing default cable specs to older persisted projects', () => {
+    const state = projectReducer(undefined, { type: 'init' });
+    const olderProject = {
+      ...state.current,
+      cableSpecs: state.current.cableSpecs.filter((spec) => !spec.model.startsWith('ZC-')),
+    };
+
+    const normalizedProject = normalizeProject(olderProject);
+
+    expect(normalizedProject.cableSpecs).toEqual(
+      expect.arrayContaining(
+        defaultCableSpecs
+          .filter((spec) => spec.model.startsWith('ZC-'))
+          .map((spec) => expect.objectContaining({ model: spec.model })),
+      ),
+    );
+    expect(normalizedProject.cableSpecs).toHaveLength(defaultCableSpecs.length);
+  });
+
+  it('adds missing default device ports to older persisted device presets', () => {
+    const state = projectReducer(undefined, { type: 'init' });
+    const olderProject = {
+      ...state.current,
+      deviceTypePresets: state.current.deviceTypePresets.map((preset) => ({
+        ...preset,
+        ports: preset.ports.filter(
+          (port) => port.portType !== '主机到配电' && port.portType !== '快充主机到配电',
+        ),
+      })),
+    };
+
+    const normalizedProject = normalizeProject(olderProject);
+
+    expect(
+      normalizedProject.deviceTypePresets
+        .find((preset) => preset.deviceType === '主机')
+        ?.ports.some((port) => port.portType === '主机到配电'),
+    ).toBe(true);
+    expect(
+      normalizedProject.deviceTypePresets
+        .find((preset) => preset.deviceType === '快充主机')
+        ?.ports.some((port) => port.portType === '快充主机到配电'),
+    ).toBe(true);
+    expect(normalizedProject.deviceTypePresets).toHaveLength(defaultDeviceTypePresets.length);
   });
 
   it('clears the persisted draft from local storage', () => {

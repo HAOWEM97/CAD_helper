@@ -127,6 +127,29 @@ describe('quantity bom derivation', () => {
     ]);
   });
 
+  it('recommends 300x200mm trays when loads exceed 300x150mm capacity', () => {
+    const project = createProject();
+    project.cableSpecs[0] = {
+      id: 'spec-a',
+      model: 'ZC-YJLHV-0.6/1kV-3*400+2*185',
+      diameterText: '约 78.0 - 84.0',
+      diameterMm: 78,
+    };
+    project.connectionPoints[0].items[0] = {
+      ...project.connectionPoints[0].items[0],
+      usage: '交流线',
+      quantity: { mode: 'fixed', count: 4 },
+    };
+
+    expect(inferChannelSpecs(project)[0]).toEqual(
+      expect.objectContaining({
+        category: 'tray',
+        cableCount: 4,
+        spec: expect.objectContaining({ label: '300x200mm', widthMm: 300, heightMm: 200 }),
+      }),
+    );
+  });
+
   it('calculates cable engineering length from 2D route length, endpoint heights and channel depth changes', () => {
     const project = createProject();
     const summary = buildBomSummary(project);

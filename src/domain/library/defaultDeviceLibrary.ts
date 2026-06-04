@@ -24,6 +24,7 @@ const sourceRows: SourceRow[] = [
   { deviceType: '主机', portType: '主机到终端', usage: '接地线', quantityText: '1根', model: 'YJV-0.6/1kV-1x50', diameterText: '约 13.5 - 14.0', heightMm: 200 },
   { deviceType: '主机', portType: '主机到终端', usage: '直流线', quantityText: '8根', model: 'YJV-1.8/3kV-1x185', diameterText: '约 23.0 - 24.0', heightMm: 800 },
   { deviceType: '主机', portType: '主机到储能', usage: '直流线', quantityText: '8根', model: 'YJV-0.6/1kV-1x150', diameterText: '约 19.5 - 20.5', heightMm: 800 },
+  { deviceType: '主机', portType: '主机到配电', usage: '交流线', quantityText: '2根', model: 'ZC-YJLHV-0.6/1kV-3*400+2*185', diameterText: '约 78.0 - 84.0 mm', heightMm: 500 },
   { deviceType: '储能(带通信)', portType: '储能到汇流排柜', usage: '交流线', quantityText: '1根', model: 'VVR-0.6/1kV-2x2.5', diameterText: '约 11.0', heightMm: 600 },
   { deviceType: '储能(带通信)', portType: '储能到汇流排柜', usage: '接地线', quantityText: '1根', model: 'YJV-0.6/1kV-1x50', diameterText: '约 13.5 - 14.0', heightMm: 300 },
   { deviceType: '储能(带通信)', portType: '储能到汇流排柜', usage: '直流线', quantityText: '4根', model: 'YJV-0.6/1kV-1x150', diameterText: '约 19.5 - 20.5', heightMm: 800 },
@@ -33,6 +34,7 @@ const sourceRows: SourceRow[] = [
   { deviceType: '快充主机', portType: '快充主机到快充终端', usage: '交流线', quantityText: '1根', model: 'VVR-0.6/1kV-2x2.5', diameterText: '约 11.0', heightMm: 800 },
   { deviceType: '快充主机', portType: '快充主机到快充终端', usage: '通信线', quantityText: '1根', model: '超六类屏蔽网线 (Cat6A STP)', diameterText: '约 7.4 - 7.8', heightMm: 600 },
   { deviceType: '快充主机', portType: '快充主机到快充终端', usage: '接地线', quantityText: '1根', model: 'YJV-0.6/1kV-1x50', diameterText: '约 13.5 - 14.0', heightMm: 200 },
+  { deviceType: '快充主机', portType: '快充主机到配电', usage: '交流线', quantityText: '2根', model: 'ZC-YJLHV-0.6/1kV-3*400+2*185', diameterText: '约 78.0 - 84.0 mm', heightMm: 500 },
   { deviceType: '标准储能', portType: '储能到汇流排柜', usage: '交流线', quantityText: '1根', model: 'VVR-0.6/1kV-2x2.5', diameterText: '约 11.0', heightMm: 600 },
   { deviceType: '标准储能', portType: '储能到汇流排柜', usage: '接地线', quantityText: '1根', model: 'YJV-0.6/1kV-1x50', diameterText: '约 13.5 - 14.0', heightMm: 300 },
   { deviceType: '标准储能', portType: '储能到汇流排柜', usage: '直流线', quantityText: '4根', model: 'YJV-0.6/1kV-1x150', diameterText: '约 19.5 - 20.5', heightMm: 800 },
@@ -51,6 +53,12 @@ const sourceRows: SourceRow[] = [
   { deviceType: '快充终端', portType: '快充主机到快充终端', usage: '通信线', quantityText: '1根', model: '超六类屏蔽网线 (Cat6A STP)', diameterText: '约 7.4 - 7.8', heightMm: 500 },
   { deviceType: '快充终端', portType: '快充主机到快充终端', usage: '接地线', quantityText: '1根', model: 'YJV-0.6/1kV-1x50', diameterText: '约 13.5 - 14.0', heightMm: 500 },
   { deviceType: '电缆井', portType: '电缆汇总点', usage: '', quantityText: '不限', model: '*', diameterText: '', heightMm: 500, acceptsAnyCable: true },
+];
+
+const supplementalCableSpecs = [
+  { model: 'ZC-YJLHV-0.6/1kV-3*400+2*185', diameterText: '约 78.0 - 84.0 mm' },
+  { model: 'ZC-YJLHV-0.6/1kV-4*25+1*16', diameterText: '约 26.0 - 29.0 mm' },
+  { model: 'ZC-YJV-0.6/1kV-3*300+2*150', diameterText: '约 64.0 - 69.0 mm' },
 ];
 
 export function parseCableQuantity(value: string): CableQuantity {
@@ -81,6 +89,16 @@ function specId(model: string) {
   return `cable-spec-${model}`.replace(/\s+/g, '-');
 }
 
+function cableSpecFromModel(model: string, diameterText: string): CableSpec {
+  const diameter = parseDiameterText(diameterText);
+  return {
+    id: specId(model),
+    model,
+    diameterText,
+    ...diameter,
+  };
+}
+
 function connectionItemFromRow(row: SourceRow): ConnectionCableItem {
   return {
     id: `connection-cable-${row.deviceType}-${row.portType}-${row.usage}-${row.model}`.replace(/\s+/g, '-'),
@@ -94,18 +112,14 @@ function connectionItemFromRow(row: SourceRow): ConnectionCableItem {
 
 export const defaultCableSpecs: CableSpec[] = Array.from(
   new Map(
-    sourceRows.filter((row) => !row.acceptsAnyCable).map((row) => {
-      const diameter = parseDiameterText(row.diameterText);
-      return [
-        specId(row.model),
-        {
-          id: specId(row.model),
-          model: row.model,
-          diameterText: row.diameterText,
-          ...diameter,
-        },
-      ];
-    }),
+    [
+      ...sourceRows
+        .filter((row) => !row.acceptsAnyCable)
+        .map((row) => cableSpecFromModel(row.model, row.diameterText)),
+      ...supplementalCableSpecs.map((spec) =>
+        cableSpecFromModel(spec.model, spec.diameterText),
+      ),
+    ].map((spec) => [spec.id, spec]),
   ).values(),
 );
 

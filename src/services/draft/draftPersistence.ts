@@ -160,7 +160,8 @@ export function normalizeProject(project: Project): Project {
       };
     }>;
   };
-  const rawCableSpecs = project.cableSpecs?.length ? project.cableSpecs : defaultCableSpecs;
+  const projectCableSpecs = project.cableSpecs?.length ? project.cableSpecs : [];
+  const rawCableSpecs = [...projectCableSpecs, ...defaultCableSpecs];
   const strippedCableSpecs = rawCableSpecs.map((spec) => {
     const { usage: _usage, ...nextSpec } = spec as typeof spec & { usage?: string };
     return nextSpec;
@@ -255,22 +256,44 @@ export function normalizeProject(project: Project): Project {
         })),
       ]
     : defaultConnectionPointPresets;
+  const normalizeDevicePreset = (preset: Project['deviceTypePresets'][number]) => ({
+    ...preset,
+    ports: preset.ports.map((port) => ({
+      ...port,
+      items: normalizeItems(port.items),
+    })),
+  });
   const deviceTypePresets = project.deviceTypePresets?.length
-    ? [
-        ...defaultDeviceTypePresets.filter(
-          (defaultPreset) =>
-            !project.deviceTypePresets.some(
-              (preset) => preset.deviceType === defaultPreset.deviceType,
-            ),
-        ),
-        ...project.deviceTypePresets.map((preset) => ({
-          ...preset,
-          ports: preset.ports.map((port) => ({
-            ...port,
-            items: normalizeItems(port.items),
-          })),
-        })),
-      ]
+    ? project.deviceTypePresets.map((preset) => {
+        const normalizedPreset = normalizeDevicePreset(preset);
+        const defaultPreset = defaultDeviceTypePresets.find(
+          (item) => item.deviceType === normalizedPreset.deviceType,
+        );
+        const missingDefaultPorts =
+          defaultPreset?.ports
+            .filter(
+              (defaultPort) =>
+                !normalizedPreset.ports.some((port) => port.portType === defaultPort.portType),
+            )
+            .map((port) => ({
+              ...port,
+              items: normalizeItems(port.items),
+            })) ?? [];
+
+        return {
+          ...normalizedPreset,
+          ports: [...normalizedPreset.ports, ...missingDefaultPorts],
+        };
+      }).concat(
+        defaultDeviceTypePresets
+          .filter(
+            (defaultPreset) =>
+              !project.deviceTypePresets.some(
+                (preset) => preset.deviceType === defaultPreset.deviceType,
+              ),
+          )
+          .map(normalizeDevicePreset),
+      )
     : defaultDeviceTypePresets;
 
   const routes = dedupeRoutesByStart(project.routes ?? []);

@@ -178,6 +178,7 @@ function ductDefinition(size: DuctSize, count: number) {
 export const STANDARD_TRAY_SPECS: ChannelSpec[] = [
   { kind: 'tray', source: 'standard', label: '200x150mm', widthMm: 200, heightMm: 150 },
   { kind: 'tray', source: 'standard', label: '300x150mm', widthMm: 300, heightMm: 150 },
+  { kind: 'tray', source: 'standard', label: '300x200mm', widthMm: 300, heightMm: 200 },
   { kind: 'tray', source: 'standard', label: '500x150mm', widthMm: 500, heightMm: 150 },
 ];
 

@@ -46,8 +46,20 @@ describe('shortest route path', () => {
 describe('device library and connection validation', () => {
   it('contains the Excel-derived default devices and cable diameter ranges', () => {
     expect(defaultDeviceTypePresets.map((preset) => preset.deviceType)).toContain('汇流排柜');
-    expect(defaultCableSpecs).toHaveLength(8);
+    expect(defaultCableSpecs).toHaveLength(11);
     expect(defaultCableSpecs.every((spec) => !('usage' in spec))).toBe(true);
+    expect(
+      defaultCableSpecs.find(
+        (spec) => spec.model === 'ZC-YJLHV-0.6/1kV-3*400+2*185',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        diameterText: '约 78.0 - 84.0 mm',
+        diameterMinMm: 78,
+        diameterMaxMm: 84,
+        diameterMm: 81,
+      }),
+    );
     expect(
       defaultDeviceTypePresets
         .find((preset) => preset.deviceType === '主机')
@@ -58,6 +70,32 @@ describe('device library and connection validation', () => {
       ['压缩机线', 600],
       ['接地线', 200],
       ['直流线', 800],
+    ]);
+    expect(
+      defaultDeviceTypePresets
+        .find((preset) => preset.deviceType === '主机')
+        ?.ports.find((port) => port.portType === '主机到配电')
+        ?.items,
+    ).toEqual([
+      expect.objectContaining({
+        cableSpecId: 'cable-spec-ZC-YJLHV-0.6/1kV-3*400+2*185',
+        usage: '交流线',
+        quantity: { mode: 'fixed', count: 2 },
+        connectionHeightMm: 500,
+      }),
+    ]);
+    expect(
+      defaultDeviceTypePresets
+        .find((preset) => preset.deviceType === '快充主机')
+        ?.ports.find((port) => port.portType === '快充主机到配电')
+        ?.items,
+    ).toEqual([
+      expect.objectContaining({
+        cableSpecId: 'cable-spec-ZC-YJLHV-0.6/1kV-3*400+2*185',
+        usage: '交流线',
+        quantity: { mode: 'fixed', count: 2 },
+        connectionHeightMm: 500,
+      }),
     ]);
     expect(defaultConnectionPointPresets.some((preset) => preset.name === '主机到终端')).toBe(
       true,
