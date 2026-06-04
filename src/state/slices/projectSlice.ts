@@ -43,7 +43,7 @@ const createEmptyCalibrationDraft = (): CalibrationDraft => ({
   },
 });
 
-const initialProject: Project = {
+export const createInitialProject = (): Project => ({
   id: 'local-project',
   name: '未命名工程',
   image: null,
@@ -55,11 +55,22 @@ const initialProject: Project = {
   },
   deviceInstances: [],
   connectionPoints: [],
-  cableSpecs: defaultCableSpecs,
-  connectionPointPresets: defaultConnectionPointPresets,
-  deviceTypePresets: defaultDeviceTypePresets,
+  cableSpecs: defaultCableSpecs.map((spec) => ({ ...spec })),
+  connectionPointPresets: defaultConnectionPointPresets.map((preset) => ({
+    ...preset,
+    items: preset.items.map((item) => ({ ...item })),
+  })),
+  deviceTypePresets: defaultDeviceTypePresets.map((preset) => ({
+    ...preset,
+    ports: preset.ports.map((port) => ({
+      ...port,
+      items: port.items.map((item) => ({ ...item })),
+    })),
+  })),
   routes: [],
-};
+});
+
+const initialProject: Project = createInitialProject();
 
 const initialState: ProjectState = {
   current: initialProject,
@@ -255,6 +266,12 @@ const projectSlice = createSlice({
   name: 'project',
   initialState,
   reducers: {
+    replaceProject(state, action: PayloadAction<Project>) {
+      state.current = action.payload;
+    },
+    resetProject(state) {
+      state.current = createInitialProject();
+    },
     renameProject(state, action: PayloadAction<string>) {
       state.current.name = action.payload.trim() || initialProject.name;
     },
@@ -763,6 +780,8 @@ export const {
   deleteTopologyNode,
   moveTopologyNode,
   renameProject,
+  replaceProject,
+  resetProject,
   setActiveCalibrationPoint,
   setCalibration,
   setCalibrationCadCoordinate,

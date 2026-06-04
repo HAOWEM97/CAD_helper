@@ -15,6 +15,7 @@ import projectReducer, {
   deleteTopologyChannel,
   deleteTopologyNode,
   moveTopologyNode,
+  resetProject,
   upsertCableSpec,
   upsertConnectionPoint,
   upsertConnectionPointPreset,
@@ -26,6 +27,22 @@ import projectReducer, {
 } from '@/state/slices/projectSlice';
 
 describe('topology reducers', () => {
+  it('resets the project to a clean workspace with default libraries', () => {
+    let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
+    state = projectReducer(state, upsertCableSpec({ id: 'spec-x', model: 'CUSTOM', diameterText: '10' }));
+
+    state = projectReducer(state, resetProject());
+
+    expect(state.current.name).toBe('未命名工程');
+    expect(state.current.image).toBeNull();
+    expect(state.current.calibration).toBeNull();
+    expect(state.current.topology.nodes).toEqual([]);
+    expect(state.current.topology.channels).toEqual([]);
+    expect(state.current.routes).toEqual([]);
+    expect(state.current.cableSpecs.some((spec) => spec.model === 'CUSTOM')).toBe(false);
+    expect(state.current.cableSpecs.length).toBeGreaterThan(0);
+  });
+
   it('adds nodes and channels without duplicating reverse channel pairs', () => {
     let state = projectReducer(undefined, addTopologyNode({ id: 'node-a', position: { x: 0, y: 0 } }));
     state = projectReducer(state, addTopologyNode({ id: 'node-b', position: { x: 10, y: 0 } }));

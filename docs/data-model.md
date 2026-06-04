@@ -90,6 +90,31 @@ type DeviceTypePreset = {
 - 线缆用量明细 CSV 是导出时派生的交付结果，每行对应“一条有效路由中的一种起点线缆明细”，不改变工程 JSON 数据结构。
 - 一键清除节点属性只清空 `deviceInstances`、`connectionPoints`、`routes` 和通道上的线缆登记，不清空拓扑和常用库。
 
+## 工程文件
+
+阶段 6 的正式工程数据使用版本化包装结构：
+
+```ts
+type ProjectFile = {
+  kind: 'cad-router-web-project';
+  version: 1;
+  savedAt: string;
+  project: Project;
+  assetNotice: {
+    baseImageIncluded: boolean;
+    message: string;
+  };
+};
+```
+
+- `project` 只包含 `Project` 明确定义的业务字段，不导出未知运行时字段。
+- `.json` 工程文件不包含 PNG `Blob`、object URL、DOM、Canvas、OpenSeadragon 或其他运行时对象。
+- `.json` 中 `assetNotice.baseImageIncluded` 为 `false`，用于明确提示底图文件不在 JSON 中。
+- `.cadproj` 工程包是标准 zip 存储包，包含 `project.json` 与 `base-image.png`；包内 `project.json` 的 `assetNotice.baseImageIncluded` 为 `true`。
+- 载入 `.cadproj` 后，包内 PNG 会写入浏览器本地暂存，后续刷新可继续恢复底图。
+- 载入工程文件时会规范化旧数据、去重同一起点路由，并重建通道 `cableIds` 摘要。
+- 载入后 BOM、线缆明细和 CAD 脚本仍由当前工程状态重新派生，不从 JSON 读取旧汇总。
+
 ## UI 草稿状态
 
 - `UiState.rightPanelWidth` 记录右侧属性面板展开时的用户宽度偏好，默认 `320`，范围 `300-640`。

@@ -42,6 +42,16 @@ button {
   cursor: pointer;
 }
 
+.visually-hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 .app-shell {
   display: grid;
   grid-template-rows: 76px minmax(0, 1fr) 34px;
@@ -195,6 +205,108 @@ button {
   background: var(--accent-strong);
   color: #ffffff;
   font-weight: 800;
+}
+
+.primary-button.active {
+  background: var(--accent);
+}
+
+.project-menu {
+  position: relative;
+}
+
+.project-menu-popover {
+  position: fixed;
+  z-index: 10001;
+  display: grid;
+  width: 156px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  box-shadow: 0 18px 42px rgb(16 31 22 / 18%);
+}
+
+.project-menu-popover button {
+  border: 0;
+  padding: 11px 14px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-weight: 800;
+}
+
+.project-menu-popover button:hover {
+  background: var(--accent-soft);
+}
+
+.project-menu-popover .danger-menu-item {
+  color: #8f2f2f;
+}
+
+.project-menu-popover .danger-menu-item:hover {
+  background: #f5e8e8;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  padding: 24px;
+  background: rgb(12 20 15 / 38%);
+}
+
+.save-project-dialog {
+  position: fixed;
+  width: min(520px, calc(100vw - 32px));
+  border: 1px solid rgb(255 255 255 / 76%);
+  border-radius: 18px;
+  padding: 18px;
+  background: var(--panel-strong);
+  box-shadow: 0 24px 68px rgb(16 31 22 / 24%);
+}
+
+.draggable-dialog-heading {
+  cursor: move;
+  user-select: none;
+}
+
+.save-project-options {
+  display: grid;
+  gap: 10px;
+}
+
+.save-project-option {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: #f7faf4;
+  color: var(--ink);
+  text-align: left;
+}
+
+.save-project-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.save-project-option strong {
+  font-size: 14px;
+}
+
+.save-project-option span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
 @media (max-width: 1180px) {

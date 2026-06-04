@@ -128,7 +128,7 @@ export type PersistedDraft = {
   ui: PersistedUiState;
 };
 
-function normalizeProject(project: Project): Project {
+export function normalizeProject(project: Project): Project {
   const legacyProject = project as Project & {
     cableSpecs?: Array<Project['cableSpecs'][number] & { usage?: string }>;
     cableBundlePresets?: Array<{
@@ -415,6 +415,18 @@ export function savePersistedDraft(project: Project, ui: PersistedUiState) {
   }
 }
 
+export function clearPersistedDraft() {
+  if (!storageIsAvailable()) {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    // 清除本地草稿失败不影响当前内存工程重置。
+  }
+}
+
 function openDraftDatabase() {
   if (!indexedDbIsAvailable()) {
     return Promise.resolve(null);
@@ -479,6 +491,21 @@ export async function loadDraftImageBlob() {
         resolve(request.result instanceof Blob ? request.result : null);
       };
     });
+  } finally {
+    database.close();
+  }
+}
+
+export async function clearDraftImageBlob() {
+  const database = await openDraftDatabase();
+  if (!database) {
+    return;
+  }
+
+  try {
+    const transaction = database.transaction(ASSET_STORE_NAME, 'readwrite');
+    transaction.objectStore(ASSET_STORE_NAME).delete(BASE_IMAGE_KEY);
+    await waitForTransaction(transaction);
   } finally {
     database.close();
   }

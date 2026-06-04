@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadPersistedDraft, pickPersistableUiState } from '@/services/draft/draftPersistence';
+import {
+  clearPersistedDraft,
+  loadPersistedDraft,
+  pickPersistableUiState,
+} from '@/services/draft/draftPersistence';
 import projectReducer, {
   addTopologyChannel,
   addTopologyNode,
@@ -16,6 +20,9 @@ function createLocalStorageMock() {
     getItem: vi.fn((key: string) => store.get(key) ?? null),
     setItem: vi.fn((key: string, value: string) => {
       store.set(key, value);
+    }),
+    removeItem: vi.fn((key: string) => {
+      store.delete(key);
     }),
   };
 }
@@ -121,5 +128,16 @@ describe('draft persistence', () => {
       ['CAT6x1'],
       [],
     ]);
+  });
+
+  it('clears the persisted draft from local storage', () => {
+    const localStorage = createLocalStorageMock();
+    vi.stubGlobal('window', { localStorage });
+    localStorage.setItem('cad-router-web:draft:v1', JSON.stringify({ version: 1 }));
+
+    clearPersistedDraft();
+
+    expect(localStorage.removeItem).toHaveBeenCalledWith('cad-router-web:draft:v1');
+    expect(localStorage.getItem('cad-router-web:draft:v1')).toBeNull();
   });
 });

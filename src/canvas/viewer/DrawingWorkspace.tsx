@@ -153,6 +153,7 @@ export function DrawingWorkspace() {
   const viewerElementRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<OpenSeadragon.Viewer | null>(null);
   const imageUrlRef = useRef<string | null>(null);
+  const imageUrlImageIdRef = useRef<string | null>(null);
   const panStateRef = useRef<PanState>(null);
   const dragNodeRef = useRef<DragNodeState>(null);
   const leftPressRef = useRef<LeftPressState>(null);
@@ -478,18 +479,21 @@ export function DrawingWorkspace() {
         URL.revokeObjectURL(imageUrlRef.current);
       }
 
-      imageUrlRef.current = nextUrl;
-      setImageUrl(nextUrl);
       setImportError(null);
       const sameImage =
         image?.name === file.name &&
         image.width === probe.naturalWidth &&
         image.height === probe.naturalHeight;
+      const nextImageId = sameImage ? image.id : createImageId();
+
+      imageUrlRef.current = nextUrl;
+      imageUrlImageIdRef.current = nextImageId;
+      setImageUrl(nextUrl);
 
       if (!sameImage) {
         dispatch(
           setImageMetadata({
-            id: createImageId(),
+            id: nextImageId,
             name: file.name,
             width: probe.naturalWidth,
             height: probe.naturalHeight,
@@ -832,6 +836,22 @@ export function DrawingWorkspace() {
   }, [activeStep, dispatch, selectedTopologyObject]);
 
   useEffect(() => {
+    if (image?.id === imageUrlImageIdRef.current) {
+      return;
+    }
+
+    if (imageUrlRef.current) {
+      URL.revokeObjectURL(imageUrlRef.current);
+      imageUrlRef.current = null;
+    }
+    imageUrlImageIdRef.current = null;
+    setImageUrl(null);
+    setMarkerPositions([]);
+    setTopologyNodePositions([]);
+    setTopologyChannelPositions([]);
+  }, [image?.id]);
+
+  useEffect(() => {
     let cancelled = false;
 
     if (!image || imageUrl || imageUrlRef.current) {
@@ -843,17 +863,48 @@ export function DrawingWorkspace() {
     setRestoringImage(true);
     void loadDraftImageBlob()
       .then((blob) => {
-        if (cancelled || !blob) {
+        if (cancelled) {
+          return;
+        }
+
+        if (!blob) {
+          setImportError(`工程 JSON 不包含 PNG 底图文件，请重新选择原底图：${image.name}。`);
           return;
         }
 
         const nextUrl = URL.createObjectURL(blob);
-        if (imageUrlRef.current) {
-          URL.revokeObjectURL(imageUrlRef.current);
-        }
+        const probe = new Image();
 
-        imageUrlRef.current = nextUrl;
-        setImageUrl(nextUrl);
+        probe.onload = () => {
+          if (cancelled) {
+            URL.revokeObjectURL(nextUrl);
+            return;
+          }
+
+          if (probe.naturalWidth !== image.width || probe.naturalHeight !== image.height) {
+            URL.revokeObjectURL(nextUrl);
+            setImportError(`浏览器暂存底图尺寸与工程不一致，请重新选择原底图：${image.name}。`);
+            return;
+          }
+
+          if (imageUrlRef.current) {
+            URL.revokeObjectURL(imageUrlRef.current);
+          }
+
+          imageUrlRef.current = nextUrl;
+          imageUrlImageIdRef.current = image.id;
+          setImageUrl(nextUrl);
+          setImportError(null);
+        };
+
+        probe.onerror = () => {
+          URL.revokeObjectURL(nextUrl);
+          if (!cancelled) {
+            setImportError(`浏览器暂存底图无法读取，请重新选择原底图：${image.name}。`);
+          }
+        };
+
+        probe.src = nextUrl;
       })
       .finally(() => {
         if (!cancelled) {
@@ -930,6 +981,7 @@ export function DrawingWorkspace() {
       if (imageUrlRef.current) {
         URL.revokeObjectURL(imageUrlRef.current);
         imageUrlRef.current = null;
+        imageUrlImageIdRef.current = null;
       }
     },
     [],
